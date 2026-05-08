@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0d1f14" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ピンポンパン" />
+  <title>ピンポンパン</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@900&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+    body { margin: 0; background: #0d1f14; overscroll-behavior: none; }
+    select option { background: #1a2e1a; color: white; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState } = React;
+
+
+// ===== The Masters カラーパレット =====
+// 深緑 #1a3a2a, ゴールド #c9a84c, アイボリー #f5f0e8, 濃紺背景 #0d1f14
+
+const DEFAULT_PARS = [4,3,4,5,4,3,4,5,4,4,3,4,5,4,3,4,5,4];
+const PLAYER_COLORS = ["#4ade80","#60a5fa","#f87171","#fbbf24"];
+const PLAYER_ICONS  = ["🟢","🔵","🔴","🟡"];
+const medals = ["🥇","🥈","🥉","4"];
+
+function getTotal(s){ return s.reduce((a,b)=>b!==""?a+Number(b):a,0); }
+function getRank(t){ const s=[...t].sort((a,b)=>a-b); return t.map(v=>s.indexOf(v)+1); }
+
+// ===== スタイル定数 =====
+const BG   = {background:"linear-gradient(160deg,#0d1f14 0%,#1a3a2a 50%,#0d1f14 100%)"};
+const GOLD = "#c9a84c";
+const IVORY= "#f5f0e8";
+const DARK = "#0d1f14";
+const CARD = {background:"rgba(255,255,255,0.05)",border:"1px solid rgba(201,168,76,0.25)",borderRadius:16};
+const CARD_GOLD = {background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.5)",borderRadius:16};
+const gameFont = {fontFamily:"'M PLUS Rounded 1c', sans-serif", fontWeight:900};
+const titleFont= {fontFamily:"'M PLUS Rounded 1c', sans-serif", fontWeight:900, letterSpacing:"0.12em"};
+
+function GoldLine(){ return <div style={{height:1,background:`linear-gradient(90deg,transparent,${GOLD},transparent)`,margin:"12px 0"}}/>; }
+
+function Btn({onClick,children,gold,small,disabled,outline}){
+  const base={
+    width:"100%", padding:small?"10px 16px":"16px", borderRadius:12, fontFamily:"'M PLUS Rounded 1c', sans-serif",
+    fontSize:small?"12px":"14px", fontWeight:"bold", cursor:disabled?"not-allowed":"pointer",
+    transition:"all 0.15s", border:"none", letterSpacing:"0.05em",
+  };
+  const style = gold
+    ? {...base, background:disabled?"#444":`linear-gradient(135deg,${GOLD},#e8c56a,${GOLD})`, color:DARK, opacity:disabled?0.5:1}
+    : outline
+    ? {...base, background:"transparent", border:`1px solid rgba(201,168,76,0.4)`, color:IVORY}
+    : {...base, background:"rgba(255,255,255,0.08)", color:IVORY};
+  return <button style={style} onClick={onClick} disabled={disabled}>{children}</button>;
+}
+
+function App(){
+  const [phase, setPhase]   = useState("course");
+  const [cName, setCName]   = useState("");
+  const [pars,  setPars]    = useState([...DEFAULT_PARS]);
+  const [names, setNames]   = useState(["プレイヤー1","プレイヤー2","プレイヤー3","プレイヤー4"]);
+  const [scores,setScores]  = useState(Array.from({length:4},()=>Array(18).fill("")));
+  const [hole,  setHole]    = useState(0);
+  // ポイント設定
+  const [pts, setPts] = useState({
+    p1: 3000, p2: 1000,
+    np: 1500,
+  });
+  // 3位・4位は自動計算
+  const p3 = -pts.p2;
+  const p4 = -pts.p1;
+  const npLose = Math.round(pts.np / 3);
+  // nearpin[i] = 選んだプレイヤーindex (0-3) or null (該当なし選択) or undefined (未選択)
+  const [nearpin, setNearpin] = useState({}); // { holeIndex: playerIndex | null }
+
+  // Par3ホールの一覧（0-indexed）
+  const par3Holes = pars.map((p,i)=>p===3?i:null).filter(i=>i!==null);
+
+  // ニアピン賞計算
+  // Par3を4ホールブロックとして持ち越し処理
+  function calcNearpin(){
+    const prizes = [0,0,0,0];
+    let carry = 0;
+    for(let idx=0; idx<par3Holes.length; idx++){
+      const h = par3Holes[idx];
+      const winner = nearpin[h];
+      if(winner === undefined) continue;
+      if(winner === null){
+        if(idx === par3Holes.length-1){ /* 全て該当なし → ポイントなし */ }
+        else carry++;
+      } else {
+        const mult = carry + 1;
+        prizes[winner] += pts.np * mult;
+        for(let pi=0;pi<4;pi++) if(pi!==winner) prizes[pi] -= npLose * mult;
+        carry = 0;
+      }
+    }
+    return prizes;
+  }
+
+  const nearpinPrizes = calcNearpin();
+
+  const frontT = scores.map(s=>getTotal(s.slice(0,9)));
+  const backT  = scores.map(s=>getTotal(s.slice(9)));
+  const totalT = scores.map(s=>getTotal(s));
+  const ranks  = getRank(totalT);
+  const parF   = pars.slice(0,9).reduce((a,b)=>a+b,0);
+  const parB   = pars.slice(9).reduce((a,b)=>a+b,0);
+  const parTotal = parF+parB;
+
+  function calcPrizes(totals){
+    const s=[...totals].sort((a,b)=>a-b);
+    if(s[0]===s[3]) return [0,0,0,0];
+    const {p1,p2}=pts;
+    const top3=s[0]===s[1]&&s[1]===s[2];
+    const top2=!top3&&s[0]===s[1];
+    const mid2=!top3&&!top2&&s[1]===s[2];
+    const bot2=!top3&&!top2&&!mid2&&s[2]===s[3];
+    const t = top3 ? [p1, p1, p1, -(p1*3)]
+            : top2 ? [(p1+p2)/2, (p1+p2)/2, p3, p4]
+            : mid2 ? [p1, (p2+p3)/2, (p2+p3)/2, p4]
+            : bot2 ? [p1, p2, (p3+p4)/2, (p3+p4)/2]
+            :        [p1, p2, p3, p4];
+    return totals.map(v=>t[s.indexOf(v)]);
+  }
+  function sp(h,v){ setPars(p=>{const n=[...p];n[h]=Math.max(3,Math.min(5,parseInt(v)||4));return n;}); }
+  function sc(pi,h,v){ const val=v===""?"":(Math.max(1,parseInt(v)||1)); setScores(p=>{const n=p.map(s=>[...s]);n[pi][h]=val;return n;}); }
+  function pStr(v){ return v>0?`+${v.toLocaleString()}pt`:`${v.toLocaleString()}pt`; }
+  function pCol(v){ return v>0?GOLD:v<0?"#f87171":"rgba(255,255,255,0.4)"; }
+
+  const wrap = {minHeight:"100vh",...BG, padding:"0 0 40px 0"};
+  const inner= {maxWidth:480,margin:"0 auto",padding:"0 16px"};
+
+  const LOGO_SRC = "data:image/webp;base64,UklGRnguAABXRUJQVlA4IGwuAACQfACdASqQAV4APo00lUelIqIhMNlM8KARiWgAzXzuFPfR+blZn8n9L/ub8FuovLb5x/7n9j9rP+d/339Y9z/9k/zf/Y9wX+semT0jfuh6gP2S/XL3Yf8h+zfu4/ar2AP5t/c//p2KfoP/tn///XF/c7///Lh+5X7b+03gAm+b8d9m/oH+S/Mf5T+3/4X/kf4j2r/mLvRdPfsz6h/z38J/0/8D50/6z/G/kd6J/F7/A+3z5CPdX3hcFIAT9Z/wvf+6jviL2AP9B4ZHh6fgPUS/oX+s9V7+6/83+3/3PrI/bP+R7D/9q6qhg3/rUX4nrHKs32QVzBbwFAwHfkL0lynxW7Zoul6MMYhnPgqS+nobFD0JED+O5+dnutzAJqTEiyQNG+dN3aAjzPLVPP5mMrJgxajzafTyz367jnQWT11pMot8PMsGrUAhRpgxgnVBlPCvngx3uN9MIf1j94Yu+/xRmHIMvk0QJWS71LWHbNQCELkH6cztMQIVhj14xFcEzopfhPFvl34z8+WgtgTr2hrOM3Vg9dNunBTe7UbTo8F7Y3dCi6IdFSNcRMHmrRyfMdvpk2ox6jN7uYkLxc4d5ayx6vSb+sb0gQXSUEhUSfDppStMouTguqnBDY45Hr2Dw2ORckfk2pOYClwdr/08wu1nKX4wDhU3Fu00rK5mc6dGv1xxm4ap2XukCc2RyUgr3tcjsI8EqDm5M7olyazQgZ4HOdhYsG/SBJToRiT7aTZwYDgn1FvHWaUX0Z8TcvBa/hNhLi8BPGu9ZoLEQdfaqeZ8cEkvk954uCeG48eOK8UXMs2138Fqcvjx41larDSEDAKTAPfWOQllYggNDF5haX8hytC693TN2GoGb9nAA9tz+Z1q5fVvJvBpKMS0dwr/6Rqwk2OMHUI5x2Abb63eayViJwLqZCJQux2iv1NLE067sbeos25Dmg2ukKMmJdt9msSqk8HPkk294yEFi4SN+Kxd30PH1pC37o+jho4WlRNJGnjsplfaYtocayVyWgva1Hz1LBqk+q/RLUh7CIKf/9d9Q6ZjfjDizqvjdNvOQVl30S3gDGyGJIvLSS20Z9h+jJ67G8iZhVZAIDY2rzYNb3vPf3rt3z5m6nbwrPinfmhaC4+gdDa/1vC64hQfH2oshdOLKagHo0jocc2IxJ+qWPLS+Hq16klDBXZjMO1m3V/UYd1/PQxQIRyOLCbLeslbmrP+C3kKeQ3z6+Xvqm6vtld4rvsT1OM/5aanGKZvzp4hARBFvMg86JMQwaRP4AeB0Q6Dn0/lXD861CMWxIWaycKB6WqrPtTy946mRrYFxtUTxidQ49c3yJ7khJ7RiQAA/vebIlXET9raQog+VQe7LrAZZpdmh6HUGwmPal100/+o6frRpc9Wzr6xA87HLC3NDpMSEZBBS3lawRAxTaMTQtfGuiVjb2M7G2gvBxmBoHxuZiI1vSrcD7AxTHXnF7WIfDG5svPr91kLw4/GFphGSKEgwthc0SAy7MQCi0k5FQP1XjjsQaZJEc12DcSA2ft+Y7+a5w2bbseekczMBLgYI142pSOJP3/QQE0n29U+aUb5dzt8y97kLKlwfa/oirs0f+aW6SSNgBPkifIJVsZC3L4YvDosqhQBh4l2NUdh5ieuktlH2QTfHcedr6p/NCw+X8U8Kh3xuCZU8FJ4b6lI4En4YfIjRmjUwX1FcCdzbLasF3b3uHRHxGU5/MesZSbcHuJnb1ywRtHZOdONpsw/oFHRPotsCco4iVQ8X3XXthO1KSsPM6o6KVOFNBqy0LYDlM2rhqTs3ETaqLNCanF2uYuA6DxJcb9Wem/V3R476KLtcQP/b0U/wG1m2r9mNTc2k3Yy19360EsvUN+fIGWq193vJe8VgjiBuhT7UdVECvsh0QOOvm4iisbFLFJ+qgoYVi/4O/g9FbzW+UfJ9MXq+wwTowNAdBv6gxM7YggkeuA0jwXEKTXu3UadpVVXtIfggqA3Nyrq0TCF0a+U2sXlikxeV3ZztVTmPm+qFdr7K8qJ+SjgWpHTLGRMsqPQXJiVUhOGD3O0yvDtDZl5Gft/RfmDzV41qapGXSRxuyPrjSkAIhyRXa1XQApzMN6i+CTWcfUUuTxBIT3XlGOZSNnbkLBXRWfZHDWggARbQ5aWLKcXiWvOn5IV/Wu4QlMH+SNpFSee3sptRHvhIlbGoffjXakl/GrfdqW3dSzEKIvx4B26PMlxuCAcs8n8nuLV2Qa1GpSP/Mi8tlUa8CPIHHNCXVy06FtEcMrj1OpYkUQNLEQXNtRnK+b0F44C+fO1gSaNcA3YtOhaRB0Lwo4F3Vn5vTyHrIVjb07jk7UqLtpNR9jZL3G/0VukOcyJj8sZbsP+/FACHNs7mRj+jmRnzZH70S7wXoUh4SIH6MVRRRbGJEoGB66j5hcy3jBZdxW7d8bPIWtBMIxF5OJzZgO8IRHsndUpKSX/ocVz2T/LXuW/ZTjWDtnafqSIsZb1kesQxV4w+m1WigDw3BHvch+Y20ZUxlTYwLQQib+zSp01jn7/qKw3RHKFMHnBHPiqDpvI0z7BFQjjThebXNlu3D1ESNJeZgwtQRZDRJEyR67MWlU4Tds5nouqNSzBI9fOlZWrfDPdJT3RLg8u3ngz60mk+f/nwntHlcC3JmFMNLwk00iDOUH++giHM2Tpi/ldilaDJ+jUbiD6Mpi6k7dn92R9tv8sInVBXChSJYN2k1KXbuSDrSUzSJ24KvrFI3mwlzXh0SXRbwjTWLASSL2jRYmJlx0fqmm3aheV+xsE9PJnr4EKVDNubC5Ff8UWDGIaabzmYf+oiuGkSufatTdlfDxWlViiTi1o4u6v+9D7b2lTNJN6BGymidWLYIFb/ELuMUwAGGgWZEEe6aahfT0fze7SsiqjLhOL9+ICq6p+xLqcf3xrx+QQOQBFYuDfe5m2HUwa9h4FUPJcu/zdBJcbgstM+BkGusWNxStT5AjW5rhUZgQTDDZtoyVIF51nM5dWLYjIlP8/KvSS7Fj0N6WymE8sr8rewCeK4WiLdrICykFrsPqXqcpGfIXfBxk2c37J3CakJk25zw83UK5zgRAj+kHdcUZMYM82knl57lWlgxDPXDNMxuKwriVS+AOwynhreQM+HJDFdt0ukuzjsOmDU7DwjB9W8J7O4IdtiaqbplnYXuEO4+c7NwqnKOg8yMcuqXwIXxS8K9O5MLT0me4tsaBQmi/vF/FRXeEPyOEMNiwX2aYdsJFVWF+j/h5+hndgfzn6/ooZ+vFkmAnk5BOKlPwglFDT/91W5o7Cto7/cceuldFaH0zi29SrSwsexxsuImqgqN0YWHYdPpuxHRy1N2X430cCmDs7ZFCjlxwv4/cDWHE03zRdG2ws26bqAzLHSgP2khSQMrvnLg2aw7qgO4y82+letKiuamZcK5Y77Zv8R99zkOa/L2f5s88PFz+UHTjUiP92Q/HsV9g1RHYKvrFN3b42mkSUXd2bMoUjqh1UFfx3kyBZx+BuYq/3a7i8r/tNJApS/hFYWYQLwC3T8y0q8zYwHKJLd4TebOEJfBem6Fn24P3/L5AoniTUJI4RbFZFtA8prhYmUm160sRPle0plmHz7HCaExP8cMW0SwunTETRwTTs/9KTdIJ0KT1Ck2+z39TP7Fkn+RzNpAYfmvHFUnVuiMhwRnkvkaqbJ0SZZrasOvn/AzPDyFduh7SlAfa36qkXWFoa6pJck93yb8Dnyxfcx8vxIjL0Bmxa3YJahG73mWuLpqW6MkRCf4Oaqjbq9IwuxZwfrP0dp4hSRZnR5VnECuVjqIWh5E8rffbO/770vQm67FjcVkH7W+VByz4RiiW6164s1LBuiPScGw5U9v5g/Txoa4R/ODTd7PBSx68HIKhzqzmNTDyWApy5iyNgie6keP2n5Qnosq9ohYs8DhLf67xfAW9yTjdxCpKpgrQ5DMIoHYfDUCrS7eyjMskW/p1u8JrBmiHcud2jISc7fcgpbKTDdZ12kuFsHNYUUVxjql04VLJc5IGe1mq2YCm5Qw+LRa8ktF0PfM2FpZEFaBBCzWP4UZ2tBnTZDLrGADCIPS9WYTHqT6xxtj4ZLALZTicwwdFR/1iUEJeLiaBlx2FX+xj3QjWBaavj+BBk1G7u07CRmzHSDKmJSdt5JT+A+All/iJwWHKGCo2tHmL/9HOe+7B1kK5Zz4XI+aUI/FNibtdOi+GI6JmBZISet48yud1zryotvg+CXgoXh565b3zG70kPQx/nMbN/CqTSjaS+laYBwuticv6jNKQWcfORbGWBxO4ef6ngCnyQtATQFqoYJjjW/dTbAQ603qDVIBMRekf9CVb2mQlsCxjUlqFKnHNNWLxnSCgzzSeE19XiSv5IgRpsuU7WPztpnX1oO/W4T+3WjFiF5rwIrnRpEQpundoKRZee0yniQ8o1nb93f+l/KUfCk5PDlpMITim8wsZAikItj12BT/rAe7K//AFQpgLCXe9r2ES1X1ABQRJfU9S7Lo5PvG9EUvxr4BOnJgTD7mv2AP5WIWVL0XqMzsJqZ+/W6vf4PFK+4FZvKWa/f33AOb36rzlTxhwpl9OlD6QALMTVbaijzL6LS0lkxm6uplhDmSMHhcBVy7w0iynxHPjOf/h2nuAmE5JHz+1R3JKdU0AiEsYaXvYNLNkWuE2U2tfMKyGy2mRRcBNTZLf9caRawG3sMT3ITNR7NDOBx/SQZmhnvWKSyJ8k2sQNVEZWS5KBMopNt6tZo/ZBLrgPUEk+b+20j1N27+AhXgtPCUy9KT27l1BF0Ybs5c4twQlWp9tsvS+hjnBvPA0Evfiv6yorcYstJij2dwfZ3n9NeIgrgbSx68HtztLG+hPLU2tTbOBTDMuEKBgiBf2JwmrvTm8KofctWKgiTCAfS6bg/8yd27xcgvLN1FXLib+V3iRp4UaLZnIGTLu+5lsVjzgumPDBzZ1QylRpU9IjGSB7+3B0JzZxAI81wSE1FRPo7e0Ue4EMtqGEbkFyLpieYOUdhcC58yFS8z7oEvEaTne3QOW9aHC00Gzcenh5WewU2CaqOcWsrsP43zbeOLKAlmTelRZoKhF4/ETwiJzXFINlSdqjDC7E9bBszSdFgjWhLJmincQOjPqFHAis2gEYUyoEdvasmEXDu7x4YR4sRv9gkh/QtWTWlEvJ3vutPAMexSYLcCv6oyqwhhwUGMNupqea9JAObEF1ZC44qtThdBNQMTSODFgym16+15xW75Ij66ICC6AoDVslU93ZPpxkH27xIyTTLsEOZHj8UWnfcCyLq44zA7BDDFyYMpyIo/dV8AbqiDLNWQVFzqwTkqo+6lidF6OX2WhHo7J8owg4NSraLeMp7Zbf/5iJhJdLTPYNbQ+nEzUYfT0SlqcXd3pt4RZ+5495UcA44api8oHHh42tYoiRztprS5wIQpQzbuBc/jNZUOfPa+inn5hsqK7R00NdTMkwl/iI7Ax/9FVi992NqZZ2TxaPDouH08xhjzoWW/XcgCC4m5vm9CzlHh0noWvBug9SGUt5/waS+VOJZBdT33cubebvUdFA3kKVfME35ng92CKLtrpNd1MRbhQOMsfishKzZ4b+J4LyOVt0hb7nh54+5MdwblZ2PiHXYrt6sKbh6tP/EECYSc6+e6aciACYi9UbIIEW1HgtJOv8Td9SRxK2XdW6pS6uoy0jRxiLAjOg4iTn5I5eU0B4zV4/oPNMoac9WijbBVzjBwekLN5wIqSBi1C82YvJgq0PqzB2TzHSqvU5kfZWROK+4TBHoqeqvLZmu7TcmM7FwgvTA8GdRZSh2uRlXWuoM28WTGNm8FWyYY4yI9nVzVttECmycdIB4KvBKQYj30fHtNYBAr4ydOd08ApLAbYk9gbPU7NHgvW2r9SYcIePFyWlMmBxopd84wfrefOkexR265HJ8W+3ULcSyoUI9sdcGqtcdiLzKGLNwQpDI4OxlnVeh+fDKAuvlISMp2VJBX2wPhOK9ILJeb/BPAbt9p/zRoSDB4Wj2d7G6hYP0sG9rzG4J1QbCURQi14s72Z4x3k1oi45ThJfOCf5qeabAC/jwjcBE77so7Z4kvJThphYgSEPn3I9bBHz2xrrnYztoyjM3Vos7RMLKAecHA19KfLbEA+C4kNHqobiXDYm7bwXYGoDd4bwc5Cg25uclABgWDJwV7W85XftgzTIJoqftehiqsFObwz61Pvq8J5mLgRE/Ygg50vr9rA1lEkMWx9rYRaVceIasiz8TDZUOXrzU4M1herJ+JlFuE6/Y5O06AIv2QEHyjWQ5GSZwg2cqJs/aHZPHaiCaDfxEWjznKxNFaoj0eeppiIBCppuRVxsRD/CeY9G3Axh54Ih8/wWiRmBcYzLGDw9VjwPyaRYxs0Zz2Hj2hU7SKTLS68lQsu0pqmpRe39n3B2x/UNh+6CSgZUvnkdNOhh+QWGktD7LtW1Qxor0ZvXK1N7lIwcucO0uW9qb1Sek8mvTHmxB7792hw5c08zlG6jDckjqhaL/QhubuB+USCgoSEEdZypVTRSiHSwC+7dMx4sj/wy9HjCfZK+mGx+lvJs6H7krjwwjsRS2tMA2ATDATAz4/bOItIf7+QVBprtEzfYWENmBnl/qlcxI89vHtvcXbCABu4a3kf+m+Fsa/cdc44pNURDkV0PmG+rTBgsTq+yaxxj3Hkc3YblWaSYQxwnOVKTly65DlN87BMtM/b1TdM1CDIiSef2Bq1qEkbW0LTjMN/9yS6KtNq+4LH2XLWFGq3BcSa8HQgRIPuhlkJp1L/Xj+mGSGaC9YvL3igpudr0WJfLufQJjmIGmCuz7Ed3kZUpgeKYH5Ku+wdHWfraeGeK91avPuzdIFwZpLIAJe4Vx7tZP85E5WqteQsVPQlqvvyZQdnIeS7hEhdlIM/QAWGhvZJvoX/ucqK6bsHmb701atyOUp2SYuwQG6TDJM07g59aUyzsg0VOAfeRIhooCiWrfsbCQxYlQ09svzS55Wy29j+UunyeLzH1f0NrD9Nckp8m5CW+iLVXPhJzP/69B42N/Vig8+6y3jXsQbHh4vAVpEQw59H3dvz16PtZ8kh3GxsbDGzKjDMUxHAyftrBgroIQUESD+1gTLDncTJOzOVv5OiSDtr72fLFmrvKMy6/slRapfMt109zQVJ2ybq7JbdVL54GVtl1SY4fCRro11FmGOAfV+yVcMIAAIEI5ElM6L6hV8N2+ACDVXASpCC8d97hYbIdCzztaNAeIlF6l9Hpuw0v1LcaRIdqRrCBidrEPejTBtvVJEMcZxsoH9Dl+7WiCfsY4Y9o5FYPkU34ocLCo8li/LUqYSAi4XFpmYsDei8bMaAozws4z6RYJD9j2Yhoecd19jJm4kheSNw5c1f65mpHi4K/PS/CAETlVE0qt58CCHUmvn5ANw+PyrNYidZ637GbDxwi3RYrXOV+382yLqR17yZozkMqOelDwhsMEuYNZOtW7oTWWZCuobcG1ts9Wwol8450iB3CiQwy3WwphuiTbS+YrHo5dLs+gWyCOUkjLN0E6CnHWExmVx4aUVHDgPvTpbIOctqJhiACqU9I+0D6XK5jKZNtzb3YtpJGq9u5afktC6r1/dtOpZf/WggpS7Mofo9nFRJQxosNvf5gzkK755O4F9wCJHtz8f5wA5YddNZMXsSXDGU1E+56M57rtt98uSE2gLoxd527sCUvF2FGFQvGxx7oJnO9YZL9nN9KPWCO6bCWDxO2YP9qEwKKyq1uKsujhj+kGauJ4K+q944OUg652RT1Fhk4ilYMGzlaN2cmbyfFtLlPeYn83yVnEtGT/AZgUmEBmsfKq9iCMA/mQZf5NKb0/NewmYSk+m61QB1Bdp2a4Da4XTCzn8+uWaxLx/Sg/+2K0wStc65PByqBOFj+6Mk+tAlhAwAGu1G39UsKHnZH4h/01TJ3UGtgLKFsQX356cm72+YKK+3fd6OGMqHHaDCrkLWJlWuq8BTNW3HMCcXjlmuOljNCeQGUtCb97AAATWNlp/uW2lAvMXqdUpzNxSHOZ0+h8mqrtNxclBmYBzLdvLXkZV/cUY+5mGQU7AqQ3FHBZScPPEolr4qaN43LPxgqxE5LP5KP1MHE7d0yLpJDSt2/ghBWLsm7sYQ3Q5J4bwQrOHbrzvCTBuP5UlJeVlFJzu2oninwBkr4lSi8U0HVbjPWZisUp9Kw//Pb9SGNC8v3gHtZik6j+ypRCIjvie+0UP5J2gU79TOA85kq8+VcKosfHiC3mlxg4OAwyh5rsxdvoJf1mu7Hue+x4tNYN8PsasltQhr7ICNwGEOkv1fODxvh6Jz0zAfR7xFAsH8+3mt8+iNZ6TH4utN/sYsHUo0AdXjB0ctHQwmOkgtkbrgrvh/T96m8GwsHLprJdFqDKKFLOBVGZOOZXTOn6A5w6fLfMY90Do8pUsqhU0pnIfwdgJl1JCthaXDhjGXbXgD0SDZ5vd1B8pWCfVGrsdCeoiH3xpmsqkYB63fEXM5473Aj0MLsNbSIoJPCbyZJ8C9CZiZI4YrADk0/MCgvRQJLE0SdaMq0hgs17E1ywUwamctWOXvHg6LGrwTUFv46Yu9wVHRvusD7tF7KcXQYfQIuPoGP3y8hFa90SSvw5mFZy2ji06Rm/w63iO4KLhGLAdTXfuLrfqYmHv1ppWgriBIEkyqQgeMVd8R1/IWQf0PWBzGCyk32C4zaDhz3nIVVPUJxHoVZieg5Vii/6S+gXG4qCHyemU6zjSekj5xOPQXOx6HCnMMu5AMg2kaALrV3GIG3pGeCE1uKLSwJM8IimNz4lFnkXoJ2aJOLx6QcXbzllvIu5aiLe13Ag38GCPFHODUcxrKP/KQkshPiJuvzOnOppowFAUUFNDqU7vBpFrek0Lb/RcyvJTMz1eMIOLb2AkCxL6rH46m1BnlGEjnXm/I3C0koNKV5YgdD3YjmOeF9gr7UMya/uXqo0wqPbd+F883btJy8qEz//HkA4ySRgOAyyr5Qx7VXdo9ujps1XNp4gyUWFGshfkQXsD7isec/jbOmYwva0+jh6FT1tVaMnML4c2kxyAf/S2nmB+rKMz8N6kL3yLAbNFsnSHffh1J7MNJIpuhrOUXfyx9OD5x2CIYzfwWwYUjXMWHoJGgOCSZGZCvHAlgcXBZWS9t/TmTkf0XVEcwgd4oQWvW3KcZQcQbAcF/VDudSGSkMSATozXK70ui4ebtyc4eYLsx3unn8Trq2kJYNqn8DYLOTSREVpx6PBYspp2WBRimqSbxih5S2KEuzObeVegjV2rxNLwCX7a1Tv43EHZ3uDblRS+9f8Ddpo5eVViyFvhUXo5Ox/I2zjtf2klPr/5tPw9GS2noodNj7SsysB+Xm/DIBlF0gPfpRi9tqnJHlPXT638itc5L+5m42RjPewaQ6RbmfiO/NAkxtNl6x6Nk9vJobOxqxJqQOhOrxmD+aVoZAT62j0SrhfuiQNKflTyI9hVwAWoKdiridVLD64Nz41N9+2vNC5VNiCwAzM6oHvUz0eDf3qDhto5oBcnr5K9CXTPOEJXxCgYTkmt7FxmOyPE/EOKsejCPOAIRskP+Yfp/fF+uatuGRmPEytJB8/LO4mjOH+TWn9q511TBhmsXUn2VJGOSvUR76rLuxn7h+TjDSM7BSh4umdGB4AItk7EPqo0TV/dNtkfstsw5dkHbU/ukzFem1/2E9jJ0e9TQURNgt7EftdltvfaQah7Nob4azeExZTykAGgLARm/VPVt4VzKN5loWGy49zgmU9R0emi4B7hgZVkA3rHL4e0gjeL6wH2gQUZF1NFF0Mkl5RBwCIF1vWN8uyt6C4jyU8YZWQrZCe5slOHgh8N2aEiovz4RuwHYT8O3fEsBQjdDH7362JwKTBuEgYHxbqRWNFqaIE106N2QsczGLaEL+Ls6/38EQbSjKr2IETJmxJsVZTv998FqJhyKDW4EZObswg9tnxnzhrDjjVL4d7J/ezhUhsa7/z2hXyQp/2wTgHcBRfKEsGXkQQhGV8baJrXwCIefmabXTjgLZDtwiSwBRAACSVm9G1FcBGBcMeY51C36HPk1OAjnCPpXCK8qjcXYTFO7i3l3FyQR9Tbpy+fweAfHNlyxpdLMMXFh+JVUV5sas1P/VgtuhruKvQ6PHZsEm16NAoI8YhKLFBbTbHcj0kwdKSKyirqYhAWCfyPbIDZpPiiLOZ90VevnDod4rTd5s0EMDmx1lseta9AVItZNDhJWLcm4BAEZaUG0Vhlnyy53V2upVzA2sZUaGg5R+mmt/rGfEallFZguCIWqRwK1HQlfmRxHFDhUf7c/ZjEMgz9fwFFmq5Rv7Wg3u9nl4Arrs0i2oeQwl7IWVEHLkAqSRoF8IdsAcJtxSLvDcip+5G3AOBpPSf4DpCGMcO0XuzC8w3Fau8nHJWr/N6YaF/DDbHD4JjqYkt0uFajPrkDXVgq7ic4fGpqPh8VpPqaGzhxBZuD/Y8tqvtAVu3QAl0cMbV1NsA7qxactOkXfMxPdg1/6LSNq3EO3xTReTkDe+WIem+mHFM4FP+eyUkCgvKzyny1t1ggrNFJwRsR2/jFNKsoQBSkPXODUFV9j4RXeiDni2ilB7q4K8DCI//uDeKPrAZlAIfcUu5+CGMQg+5FTFJctzW3K1Lz/IV8l0KORGU+pz689vh0cVRqE9WLoFDIAmuFtXp8Rz9QdcMO9M0ip9HfbfOkj1RRPqdQ2xDD454D0onju12MdvYD+t2VusnxtW4S9okAIxBproAp0hJZog43kc2PlRFkgP8otSC1U5o4Y5lhNc6QNYN71NYC26fvcgl1SNn750arqooTUWR8pZgary9RYYuC+LtXpi0Q52pOVVJajQ11si/fxVCVE+WBXND7uLDgerfolOnQO8fdwiMXZjWtq0RdEJvwBdNKePHeq//gdRvpGbbHfh3o2NhoX4UNHKbclR9jPOMEvsHL3H1DfeyOtnNEdJtlUIWTc1y0qxYhMoWQNky8XiB6ToY2g/zDLIRd+uyesr2pTD4z8G4BBEopcFSQEJXsnC7zjbU+C2BfuikChryKrPJ7S4yBDgWSiNzrAjNbZk/2gqDfXn9FFRUtyvrh1MFf2T3YQcwwlFBndbXRlIie6VmM5zYuPATtQWZhbllQLRucOJdQPkt8Us4ePzDpExwGLgSPcmR/e15/55dYqNvqEZqdBvb8t4ydFfFe+ApMkuCHTcE6tpQO2Zv7zuzGjhwl8QSnF4+OaT5cmk3wet1rn9a18sjcobpw8RPX3EFZGLmEmqtj9oEei7vXOC9lQ695fTz2oR52SOEUEOTXv9s/v4Jn3I46Ywgqc/KHIg8rFF9q1evfPROOfpesqkbg/hKXLn+ZoNBddZvBn+0mQnNHvN6NqIRrMzYEKNI09/9mwiea2ml4rPRzS0+ea20yB7doX3soGfCLxOw1560d9r4d9fKMoj/rq3lXd429Qp3XfVszlXJjDwZh21TQSw1z9szbo+e+7bp9Q3wYCzT8sABqnl0GSg//JZ0DS/iMOeiL8MSWgGMahnHcH3wFPCqIbvjec8+HtQOJsMa83e9EG3oGTrogMdnLP26I7PWiA4jSpipI2KtO7EbY1veqlYhf1EdGt5QiNex5PBHvUovVlrDXSNG6ZUF8Gs7NxyfjWz3R4c9/Xyih2ClGnnorLfNrP6orOlFBto54/79i2sSQ+gYpDJjW8dHqRkS1Lou76orp5CK2va7mxZRMvLnN+6prj7rHEZ6WoJK+TF7tR7cvMBIfWBN39ucPxFSouCTYaj2ERKwinPTQRgCok19Qy23dQNK8X3E3m9zkz5ROnJo3Fxd5LfoJtkaOtWmWQ7CV5F7dk2NvlTmTY9BVrFKQ77kPl4+0sgydkUj2oC7lRcMiP7ynm7kwM3RxWR7FH2eKFus3BdrTMjvEVIGLiDxFVHFu13q3x0KBkovdrOwlB9jnGcZG999B/4lgUrTLtItK0wxgK1mT7mEFJeu9YAiIZ4yhwd1n+AmiqzOff9SX/RPNIaVw6I6QxZm+ACm0kOp9lqACxrEYMsDQTj1tKRYAHm0P9iw6HPs1jf0n6r4Jfl7AA3NQopaTVTauLhCPHcXH8FbrQifRzX6utCT0vh7ZmtxnXR2h66N0luraUeqp2qxyjn1EJ4W8hR9aAuiIH3iYH3rDVFo2sX60ARnGY9RycKQpZCksolH2ZtbRZtZMzwb2M0TdCGUvy49wFeAgzCx0ETNAxDf3bKF8TeG5LKd1/7yJsT4CojBVi1epz1Hb1DdsgC9M0ZkyooKJ2F8sWuYKoBFWy89QVKSAjViWAO6kwf4UfPGsBG9AoxSGwMtb5How5WPjJT+BBn5sGFgg9R2e+aPoEVr6+RgOmlkhnPkZ2HXFdGP2TwUOYISlMe3xbjz4APEjDPv0Wym1hO/VZS0k5p+6GNgpP8xImrVHUI4YqjCAl8uqPkBR4kUA8zMDW8ESff2Il1Ks1CbHvUhx8LprqTnGJxFo3iDA8eb7E1MVSojdiv0o0MHD3Lwt8+e81eh6Z8N5VUPU7k4ERSFVBREfr3JYPuY6T0SYm1vW/oFQcVKj+ZD1uZvlPBViXEr6mAEjxCFWE5RgBVeIlYKNCVmCZm8DdPOdYPOqAkCn8/tex9qnqeQ/vyecxSysidQtZTVXMeg94dsb0WPZ7Mw8EKATyI6KOo+IKB6vadzBLiVG3uXTZ7USfMx6HFcfZWUT7Ly2PN2mmb+4aE8NPUgEfgDq3juSvy4og0SR4/J4J1lNSFrSVkYuom3LUMi7NAnyleo3SLIFWT4OSuVDjzqCEfnNW8rTaGvBWfPa3eKCjE8lkk1MrewHcsaayqRG1icIaWtzSaT5y/tpZ7bGHo/V0Uyr1Na/CiCyAxJ9VhI+8h01hMakrnYW8fUfu0625zlryA4hldFIU45tJk30PfwkA01Q1Z817dL6lVvgAgZUuUKlvCOGKA/IDsYM+HpbfshY3SABOTpk527fUd1FsxUF1ytCeMJ9u3uC+wT8mSWpNp6bx0zZY8bUf+yrSg6mE/ILjsrmMYb8X22XJyKbYJEQEPqISfkrG+cQajQHI16bweK79VU43sayiR2iL6xsKi5U4bZLBrODk9oPDJBbffOf8gp91+He4pdMPWXrGmUmIifMWAQl+WFzFlWnvagTCkL4xWGfkfwkenmZeCPc8X+rBkkPYbcryeCOeYtSFB6DsyNaLdzDv1WCEMfFCEljkLaRRfhOEL2xLmoytB/LIhSyyAIeEC71LHepmJ+MoTkD2jqzAAbIfodmfD0YOB8xXHdl+HA81RYpRkr9rEMe/RYLdo/Z13T58VhJ78cLkN0v6j64W9TNO47OF0DHPVTAwXbkqbntg4/nX1rnr78DZkg1CTFV4RFzZcSvegOxTctyxClwrVp39WiFrJbV2Plne9xZ4zXzKTePok45L7vET9/bGRLBzIZBrJHMHzi3rSLAifk772UlybH1UA7C9HY3ugadd/SLP/bRPTaCXUVcNIkPzHdJ8owVFHm7kaDuP4MnfCaTVTQp300o0aHhS6EftY2qUkCpZh5uXSdMmx+Rh1AtKZ8sVkRp0pLqiHN3kW0WHY7tbu0Z8o39SgKKlueBePLqXVpEOwiiVNvlCXMVAn5TpRu3cCNtAtWAV3ojhl1rjoZ3EmnLVD3XPY1nPntkVdXNUbChblz8Ko4H7RkJrl67gGTe9cY7co2cM96n84GcDgoTsHCOsu8O5I6Fzc1sDUiTTHOICgNHvEVP21MF7x9wluJgQ6919fBJQzJYVx79IIMCIqf/KX9EDwvpMjZvQiIhEpua1Sdd+Q8gK43xFn/ewu+7zDVITguElAPzif2cdW0l7mBmobYmjGjEVH2VQTmOzoX77KJjRIyCU7up88FDw+MgkvlSNN7x4lYGya+cq9ayOlKJLdDyhkaJDvFluXcGvvufSATW5ASzX7w0y/s1+jUEumHgj2TlnwB8aYb/uV0BZeP7EYARYArl2aGQuTL/LwhKvIcReL7seDQznkyA1vINzirWHfCr2I6MfpAr3X+rBqQ5v4o57DRH32x5HbMIVq/YMNlbQUcs2PBwtA+HAScDBdOXfwKFM6oxXpFFE95kSh1BEeGQ3zC3ybZgov/xrxCpR7HZYcUC3J9RisYbDBB2dgtfV2VLg6NHw/2PwYQytSjY2Xr/0XYAIK00dklVhJlGi1NlPuSvtO2liRrPkwrggngUCT919QNiZOaZQOsCDwpNGKq/V9raykgVm3Z4lYSa6TkHy+2ASumD0KR8mM73XmvlsLOoqADgTG25/cMn2nFuavWHPihNJIaf/TCq7gU23jnjOd2VmE5jiYXJWq1TsvXHQisCaEoFis8lQ6YDRetQNM7x3Ne/eEeOJIAFCrbvY2DD10vvluvxruZtMZ1cGMrsLNJD7EleRqNUFGwq75/uIG6+bpc4jmkJIuKgHSoaE65O2MY5rRm5kyvPFniW4KaDsHkIpU6XNidcBAmkavnF6cFm9j1egJbSuSKB7RcRh/e5Tk+URtTxnpZ1NF1LlXdh0PmrPG6/dS5V2GyYc5VXaZOPZp6lKmj33CfmqSoDHLRNRa7eG8XFBykwRx0rLt+dA8TYETUYJOP+utzz4MxqtDHVKfNo3F+lgh4vMe7OlhwDUGIJog80fufd28798qHsDNhPl75CuHQn3EkbGa89DfYNm/EpHYOyikH8nkUhM5hXuaKd8Do6EUfNti7HQm9BcyvOJZjWIOiywKLqgjO5z4Q4NM6Ra1x3ZNiz0txBlfRz7TXCtOocXQxfnv9/+7Qq8ZMTj2/OtbjI9IpOOIThkHE4/BJJHCvEouaqADYzh34TaMCFqD9NnlXDtotwsHHr/lK9L44UttBbEfsqRGmdnWP0hkRC32rJ2RgeBmj/qfISEKQTXkcd+q5MukVBc5mzAtkvb6gMZ1hnIs8DQ68z1wy+zn4Js3VtZgY4eyanQQL+A0nLYx6iidRMRmRG0qCKwRDZtIgpJUyAGkFQTToUMyy0QdE/J9KG9Yl8eu+s3flokfrsOlb7NL3AeTwVZ4B54KGThx9ZlffGAtV1MCbKI8S2zO3kbqvz9WZxQx1u1LXmQD1zQTrBeezYOIpQKLcEOW2EWFYphwcFp58AGSRzGB6QlpNPxRmgJOVyUR5iAe2b0IiVv6Ce1yCu7ecW0xHUesJyps/+mnLzrrggB/1Q7hQ1ixjbkrqRz7gWTiJ6AMk9/KPfHC2pZNRgWd9BgafGLfabThrlyyG07Dq4qpNC06OWfyRSQKcPgRAKn6skBLqGqjVsuU40cnmHczs/XArbePKQIts6jHBgts5JNN9vQlkPgv9us0R/68vcOd04RH7cd+NQiE4Bpessac+jJQPV4f9yxP8wKQD3V4B5wmWOe8lhAah77XE0+NWEIqFolDCyDIFV+VcXOOe2Ht+7XutNxP/ySjplrZG9CRN/ZPjAGq7OB2PBocZ8IpOXIPHyRj8ESuSFPSiNC4+2lxGAIRsXtZGfeNXG5ekCCrMVUYs12NKCz9tHgjUk5KaH2vnDbE3zQqXc2p/49eXGNQPnKzwYt4CketUUdqS2UyaoP0evrhAZ3KphQ8EVWqUmNDrp5yIsSTh2jhwVuCSHB2ZSzPqjkGUF8dV/6xFNJ0HrrCA1K+My+PLVCYx5U1OQtwl0Tbbu230O5skkLWyWXByqFunDD1k7VzkdQ7ibEzTOZ4p4jObJbTyX7mfp1v8fcXN6pROw2RoZ+/JdPWc+OJYYiKzHZamBjk5PfUlRqxImyQpS+REVCLafCwX5F4X4UsUcTJdxsBNCc/o60mW1lNYLGOYGGNupvSDJJtnle3IImDlFy7DIF3WnHAxC+FV+U/nGvtPwCF7gAA";
+  function Logo({size="lg"}){
+    const big = size==="lg";
+    return (
+      <div style={{textAlign:"center", marginBottom: big?24:12}}>
+        <img src={LOGO_SRC} alt="PIN PON PAN"
+          style={{width: big?"90%":"70%", maxWidth: big?360:260, height:"auto", display:"block", margin:"0 auto"}}/>
+        {big && <div style={{...gameFont,fontSize:9,color:"rgba(245,240,232,0.35)",letterSpacing:"0.2em",marginTop:6}}>GOLF SCORE TRACKER</div>}
+      </div>
+    );
+  }
+
+  // ── COURSE ──
+  if(phase==="course") return (
+    <div style={wrap}>
+      <div style={inner}>
+        <div style={{paddingTop:40}}>
+          <Logo size="lg"/>
+        </div>
+
+        <div style={{...CARD,padding:20,marginBottom:16}}>
+          <div style={{...gameFont,fontSize:10,color:GOLD,letterSpacing:"0.15em",marginBottom:12}}>◆ コース設定</div>
+          <input value={cName} onChange={e=>setCName(e.target.value)} placeholder="コース名を入力"
+            style={{width:"100%",background:"rgba(255,255,255,0.06)",border:`1px solid rgba(201,168,76,0.3)`,borderRadius:8,
+              padding:"10px 14px",color:IVORY,fontSize:14,outline:"none",boxSizing:"border-box",
+              fontFamily:"'M PLUS Rounded 1c',sans-serif",marginBottom:16}}/>
+
+          {[{label:"◀ FRONT 9（H1〜9）",range:[0,9]},{label:"▶ BACK 9（H10〜18）",range:[9,18]}].map(({label,range})=>(
+            <div key={label} style={{marginBottom:14}}>
+              <div style={{...gameFont,fontSize:10,color:"rgba(201,168,76,0.6)",marginBottom:8}}>{label}</div>
+              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                {pars.slice(range[0],range[1]).map((p,i)=>{
+                  const hi=range[0]+i;
+                  const col=p===3?GOLD:p===5?"#60a5fa":IVORY;
+                  return (
+                    <div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                      <span style={{fontSize:9,color:"rgba(255,255,255,0.3)",fontFamily:"monospace"}}>{hi+1}</span>
+                      <select value={p} onChange={e=>sp(hi,e.target.value)}
+                        style={{width:36,height:36,background:"rgba(255,255,255,0.06)",border:`1px solid rgba(201,168,76,0.25)`,
+                          borderRadius:6,color:col,fontSize:13,textAlign:"center",fontFamily:"'M PLUS Rounded 1c',sans-serif",
+                          fontWeight:"bold",outline:"none"}}>
+                        <option value={3}>3</option><option value={4}>4</option><option value={5}>5</option>
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <div style={{textAlign:"right",...gameFont,fontSize:10,color:"rgba(201,168,76,0.5)",marginTop:8}}>
+            FRONT {parF} | BACK {parB} | TOTAL {parTotal}
+          </div>
+        </div>
+
+        <Btn gold onClick={()=>setPhase("setup")}>次へ → プレイヤー設定</Btn>
+      </div>
+    </div>
+  );
+
+  // ── SETUP ──
+  if(phase==="setup") return (
+    <div style={wrap}>
+      <div style={inner}>
+        <div style={{paddingTop:40,paddingBottom:24}}>
+          <button onClick={()=>setPhase("course")} style={{...gameFont,fontSize:10,color:"rgba(201,168,76,0.5)",background:"none",border:"none",cursor:"pointer",marginBottom:16}}>← コース設定に戻る</button>
+          <Logo size="sm"/>
+        </div>
+
+        <div style={{...CARD,padding:20,marginBottom:20}}>
+          <div style={{...gameFont,fontSize:10,color:GOLD,letterSpacing:"0.15em",marginBottom:14}}>◆ プレイヤー登録</div>
+          {names.map((name,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <span style={{fontSize:20,width:28,textAlign:"center"}}>{PLAYER_ICONS[i]}</span>
+              <input value={name} onChange={e=>setNames(p=>{const n=[...p];n[i]=e.target.value;return n;})}
+                placeholder={`PLAYER ${i+1}`}
+                style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid rgba(201,168,76,0.25)`,borderRadius:8,
+                  padding:"10px 14px",color:PLAYER_COLORS[i],fontSize:13,outline:"none",
+                  fontFamily:"'M PLUS Rounded 1c',sans-serif",boxSizing:"border-box"}}/>
+            </div>
+          ))}
+        </div>
+
+        <div style={{...CARD,padding:20,marginBottom:20}}>
+          <div style={{...gameFont,fontSize:10,color:GOLD,letterSpacing:"0.15em",marginBottom:14}}>◆ ポイント設定</div>
+          {[
+            {key:"p1", label:"1位"},
+            {key:"p2", label:"2位"},
+            {key:"np", label:"ニアピン WIN"},
+          ].map(({key,label})=>(
+            <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <span style={{...gameFont,fontSize:11,color:"rgba(245,240,232,0.6)"}}>{label}</span>
+              <input
+                type="number"
+                value={pts[key]}
+                onChange={e=>setPts(p=>({...p,[key]:parseInt(e.target.value)||0}))}
+                style={{width:100,background:"rgba(255,255,255,0.06)",border:`1px solid rgba(201,168,76,0.25)`,
+                  borderRadius:8,padding:"8px 10px",color:pts[key]>=0?GOLD:"#f87171",fontSize:13,
+                  outline:"none",textAlign:"right",fontFamily:"'M PLUS Rounded 1c',sans-serif",boxSizing:"border-box"}}
+              />
+            </div>
+          ))}
+          {[
+            {label:"3位（自動）", val:p3},
+            {label:"4位（自動）", val:p4},
+            {label:"ニアピン LOSE（自動）", val:-npLose},
+          ].map(({label,val})=>(
+            <div key={label} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6,
+              padding:"7px 10px",borderRadius:8,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)"}}>
+              <span style={{...gameFont,fontSize:11,color:"rgba(245,240,232,0.3)"}}>{label}</span>
+              <span style={{...gameFont,fontSize:11,color:"#f87171"}}>{val.toLocaleString()}pt</span>
+            </div>
+          ))}
+        </div>
+
+        <Btn gold onClick={()=>{setScores(Array.from({length:4},(_,pi)=>pars.map(p=>p)));setNearpin({});setHole(0);setPhase("playing");}}>
+          ▶ ラウンド スタート
+        </Btn>
+      </div>
+    </div>
+  );
+
+  // ── RESULT ──
+  if(phase==="result"){
+    const fP=calcPrizes(frontT), bP=calcPrizes(backT), tP=calcPrizes(totalT);
+    const nP=nearpinPrizes;
+    const grand=Array.from({length:4},(_,i)=>fP[i]+bP[i]+tP[i]+nP[i]);
+    const byGrand=[...Array(4).keys()].sort((a,b)=>grand[b]-grand[a]);
+    const sections=[{label:"FRONT 9",sc:frontT,pr:fP},{label:"BACK 9",sc:backT,pr:bP},{label:"TOTAL",sc:totalT,pr:tP}];
+    // ニアピン賞の表示用
+    const nearpinRows = par3Holes.map((h,idx)=>{
+      const winner = nearpin[h];
+      // 持ち越し倍率を計算
+      let mult = 1;
+      for(let j=idx-1;j>=0;j--){
+        if(nearpin[par3Holes[j]]===null) mult++; else break;
+      }
+      // 実際に持ち越しが有効なのは連続nullの後
+      let m2 = 1;
+      for(let j=idx-1;j>=0;j--){
+        if(nearpin[par3Holes[j]]===null) m2++; else { m2=1+idx-j-1; break; }
+      }
+      // シンプルに再計算
+      let carry2=0;
+      for(let j=0;j<idx;j++){
+        if(nearpin[par3Holes[j]]===null) carry2++;
+        else carry2=0;
+      }
+      const multiplier = carry2+1;
+      return {holeNum:h+1, winner, multiplier};
+    });
+    return (
+      <div style={wrap}>
+        <div style={inner}>
+          <div style={{paddingTop:32}}>
+            <Logo size="sm"/>
+          </div>
+          <div style={{textAlign:"center",marginBottom:20}}>
+            <div style={{fontSize:40,marginBottom:6}}>🏆</div>
+            <div style={{...titleFont,fontSize:16,color:GOLD,marginBottom:4}}>FINAL RESULT</div>
+            <div style={{...gameFont,fontSize:10,color:"rgba(245,240,232,0.4)"}}>{cName||"コース"} | PAR {parTotal}</div>
+            <GoldLine/>
+          </div>
+
+          {sections.map(({label,sc,pr})=>{
+            const si=[...Array(4).keys()].sort((a,b)=>sc[a]-sc[b]);
+            return (
+              <div key={label} style={{...CARD,padding:16,marginBottom:12}}>
+                <div style={{...gameFont,fontSize:10,color:GOLD,letterSpacing:"0.15em",marginBottom:12}}>◆ {label}</div>
+                {si.map((pi,rank)=>(
+                  <div key={pi} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:rank<3?"1px solid rgba(201,168,76,0.1)":"none"}}>
+                    <span style={{fontSize:16,width:28,textAlign:"center"}}>{medals[rank]==="4"?"4th":medals[rank]}</span>
+                    <span style={{fontSize:18}}>{PLAYER_ICONS[pi]}</span>
+                    <span style={{flex:1,...gameFont,fontSize:12,color:PLAYER_COLORS[pi]}}>{names[pi]}</span>
+                    <span style={{...gameFont,fontSize:12,color:"rgba(255,255,255,0.5)",width:28,textAlign:"right"}}>{sc[pi]||"-"}</span>
+                    <span style={{...gameFont,fontSize:12,color:pCol(pr[pi]),width:100,textAlign:"right",fontWeight:"bold"}}>{pStr(pr[pi])}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          {/* ニアピン賞 */}
+          <div style={{...CARD,padding:16,marginBottom:12}}>
+            <div style={{...gameFont,fontSize:10,color:GOLD,letterSpacing:"0.15em",marginBottom:12}}>◆ NEARPIN</div>
+            {nearpinRows.map(({holeNum,winner,multiplier})=>(
+              <div key={holeNum} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:"1px solid rgba(201,168,76,0.08)"}}>
+                <span style={{...gameFont,fontSize:10,color:"rgba(255,255,255,0.4)",width:52}}>HOLE {holeNum}</span>
+                {multiplier>1&&<span style={{...gameFont,fontSize:9,color:"#f87171",background:"rgba(248,113,113,0.1)",
+                  border:"1px solid rgba(248,113,113,0.3)",borderRadius:4,padding:"2px 6px"}}>×{multiplier}</span>}
+                {winner===undefined
+                  ? <span style={{...gameFont,fontSize:10,color:"rgba(255,255,255,0.2)"}}>未入力</span>
+                  : winner===null
+                  ? <span style={{...gameFont,fontSize:10,color:"rgba(255,255,255,0.35)"}}>該当なし → 持ち越し</span>
+                  : <>
+                      <span style={{fontSize:16}}>{PLAYER_ICONS[winner]}</span>
+                      <span style={{...gameFont,fontSize:11,color:PLAYER_COLORS[winner]}}>{names[winner]}</span>
+                      <span style={{...gameFont,fontSize:11,color:GOLD,marginLeft:"auto"}}>+{(pts.np*multiplier).toLocaleString()}pt</span>
+                    </>
+                }
+              </div>
+            ))}
+            <div style={{marginTop:12}}>
+              {Array.from({length:4},(_,pi)=>nP[pi]!==0&&(
+                <div key={pi} style={{display:"flex",justifyContent:"space-between",padding:"4px 0"}}>
+                  <span style={{...gameFont,fontSize:11,color:PLAYER_COLORS[pi]}}>{PLAYER_ICONS[pi]} {names[pi]}</span>
+                  <span style={{...gameFont,fontSize:11,color:pCol(nP[pi]),fontWeight:"bold"}}>{pStr(nP[pi])}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{...CARD_GOLD,padding:20,marginBottom:24}}>
+            <div style={{...gameFont,fontSize:10,color:GOLD,letterSpacing:"0.2em",marginBottom:14}}>◆ POINT TOTAL</div>
+            {byGrand.map((pi,rank)=>(
+              <div key={pi} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,marginBottom:6,
+                background:rank===0?"rgba(201,168,76,0.15)":"rgba(255,255,255,0.03)"}}>
+                <span style={{fontSize:rank===0?24:18,width:32,textAlign:"center"}}>{["🥇","🥈","🥉","4"][rank]}</span>
+                <span style={{fontSize:18}}>{PLAYER_ICONS[pi]}</span>
+                <span style={{flex:1,...gameFont,fontSize:13,color:PLAYER_COLORS[pi]}}>{names[pi]}</span>
+                <div style={{textAlign:"right"}}>
+                  <div style={{...gameFont,fontSize:16,color:pCol(grand[pi]),fontWeight:"bold"}}>{pStr(grand[pi])}</div>
+                  <div style={{...gameFont,fontSize:9,color:"rgba(255,255,255,0.3)"}}>
+                    {pStr(fP[pi])} / {pStr(bP[pi])} / {pStr(tP[pi])} / NP:{pStr(nP[pi])}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{display:"flex",gap:10}}>
+            <div style={{flex:1}}><Btn outline onClick={()=>setPhase("playing")}>← スコア入力</Btn></div>
+            <div style={{flex:1}}><Btn gold onClick={()=>{setScores(Array.from({length:4},()=>pars.map(p=>p)));setNearpin({});setPhase("course");setHole(0);}}>もう一度</Btn></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── PLAYING ──
+  const par = pars[hole];
+  const isHalf = hole<9?"FRONT":"BACK";
+  return (
+    <div style={{...wrap,paddingBottom:0}}>
+      {/* ヘッダー */}
+      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(13,31,20,0.95)",backdropFilter:"blur(12px)",
+        borderBottom:`1px solid rgba(201,168,76,0.2)`,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <div style={{...gameFont,fontSize:9,color:"rgba(201,168,76,0.6)",marginBottom:3}}>{isHalf} · {cName||"コース"}</div>
+          <div style={{display:"flex",alignItems:"baseline",gap:10}}>
+            <span style={{...gameFont,fontSize:20,color:IVORY}}>HOLE {hole+1}</span>
+            <span style={{...gameFont,fontSize:11,color:`rgba(201,168,76,0.7)`}}>PAR {par}</span>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <button onClick={()=>setPhase("course")}
+            style={{...gameFont,fontSize:10,background:"rgba(255,255,255,0.08)",color:"rgba(201,168,76,0.7)",
+              border:`1px solid rgba(201,168,76,0.25)`,borderRadius:8,padding:"8px 12px",cursor:"pointer"}}>
+            ← 設定
+          </button>
+          <button onClick={()=>setPhase("result")}
+            style={{...gameFont,fontSize:10,background:`linear-gradient(135deg,${GOLD},#e8c56a)`,color:DARK,border:"none",
+              borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:"bold"}}>
+            結果 →
+          </button>
+        </div>
+      </div>
+
+      <div style={{...inner,paddingTop:16}}>
+        {/* ホールナビ */}
+        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:16}}>
+          {Array.from({length:18},(_,i)=>{
+            const isCur=i===hole;
+            const edited=scores.some((s,pi)=>s[i]!==pars[i]) || (pars[i]===3 && nearpin[i]!==undefined);
+            return (
+              <button key={i} onClick={()=>setHole(i)}
+                style={{width:32,height:32,borderRadius:6,fontSize:11,fontWeight:"bold",cursor:"pointer",
+                  fontFamily:"'M PLUS Rounded 1c',sans-serif",border:"none",transition:"all 0.15s",
+                  marginLeft:i===9?8:0,
+                  background:isCur?`linear-gradient(135deg,${GOLD},#e8c56a)`:edited?"rgba(201,168,76,0.2)":"rgba(255,255,255,0.06)",
+                  color:isCur?DARK:edited?GOLD:"rgba(255,255,255,0.35)",
+                  transform:isCur?"scale(1.15)":"scale(1)"}}>
+                {i+1}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* スコア入力 */}
+        <div style={{...CARD,padding:16,marginBottom:14}}>
+          <div style={{...gameFont,fontSize:10,color:GOLD,letterSpacing:"0.15em",marginBottom:14}}>◆ スコア入力</div>
+          {Array.from({length:4},(_,pi)=>{
+            const val=scores[pi][hole];
+            const diff=val!==""?Number(val)-par:null;
+            const badgeInfo=diff===null?null:
+              diff<=-2?{label:"EAGLE↓",bg:"rgba(201,168,76,0.25)",col:GOLD}:
+              diff===-1?{label:"BIRDIE",bg:"rgba(239,68,68,0.25)",col:"#f87171"}:
+              diff===0?{label:"PAR",bg:"rgba(255,255,255,0.1)",col:IVORY}:
+              diff===1?{label:"BOGEY",bg:"rgba(96,165,250,0.2)",col:"#93c5fd"}:
+              diff===2?{label:"DBL",bg:"rgba(59,130,246,0.2)",col:"#60a5fa"}:
+              {label:`+${diff}`,bg:"rgba(30,58,138,0.3)",col:"#818cf8"};
+            return (
+              <div key={pi} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:pi<3?"1px solid rgba(201,168,76,0.08)":"none"}}>
+                <span style={{fontSize:18,width:26}}>{PLAYER_ICONS[pi]}</span>
+                <span style={{flex:1,...gameFont,fontSize:12,color:PLAYER_COLORS[pi]}}>{names[pi]}</span>
+                {badgeInfo&&<span style={{...gameFont,fontSize:9,padding:"3px 7px",borderRadius:20,
+                  background:badgeInfo.bg,color:badgeInfo.col,border:`1px solid ${badgeInfo.col}40`}}>{badgeInfo.label}</span>}
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <button onClick={()=>sc(pi,hole,val===""?par-1:Math.max(1,Number(val)-1))}
+                    style={{width:32,height:32,borderRadius:"50%",background:"rgba(255,255,255,0.08)",
+                      border:`1px solid rgba(201,168,76,0.2)`,color:IVORY,fontSize:18,cursor:"pointer",
+                      display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                  <span style={{width:28,textAlign:"center",...gameFont,fontSize:18,color:val===""?"rgba(255,255,255,0.2)":IVORY,fontWeight:"bold"}}>{val||"-"}</span>
+                  <button onClick={()=>sc(pi,hole,val===""?par+1:Number(val)+1)}
+                    style={{width:32,height:32,borderRadius:"50%",background:"rgba(255,255,255,0.08)",
+                      border:`1px solid rgba(201,168,76,0.2)`,color:IVORY,fontSize:18,cursor:"pointer",
+                      display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ニアピン選択（Par3のみ） */}
+        {par===3&&(()=>{
+          const selected = nearpin[hole];
+          // 持ち越し倍率
+          const hIdx = par3Holes.indexOf(hole);
+          let carry=0;
+          for(let j=hIdx-1;j>=0;j--){
+            if(nearpin[par3Holes[j]]===null) carry++; else break;
+          }
+          const mult=carry+1;
+          return (
+            <div style={{...CARD_GOLD,padding:16,marginBottom:14}}>
+              <div style={{...gameFont,fontSize:10,color:GOLD,letterSpacing:"0.15em",marginBottom:4}}>
+                ◆ NEARPIN {mult>1?`× ${mult} (持ち越し${carry}回)`:""}
+              </div>
+              <div style={{...gameFont,fontSize:9,color:"rgba(255,255,255,0.35)",marginBottom:12}}>
+                WIN: +{(pts.np*mult).toLocaleString()}pt / LOSE: -{(npLose*mult).toLocaleString()}pt（均等負担）
+              </div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {Array.from({length:4},(_,pi)=>{
+                  const isSel = selected===pi;
+                  return (
+                    <button key={pi} onClick={()=>setNearpin(p=>({...p,[hole]:isSel?undefined:pi}))}
+                      style={{flex:1,minWidth:60,padding:"10px 4px",borderRadius:10,cursor:"pointer",
+                        border:`2px solid ${isSel?PLAYER_COLORS[pi]:"rgba(255,255,255,0.1)"}`,
+                        background:isSel?`${PLAYER_COLORS[pi]}22`:"rgba(255,255,255,0.04)",
+                        display:"flex",flexDirection:"column",alignItems:"center",gap:4,transition:"all 0.15s"}}>
+                      <span style={{fontSize:20}}>{PLAYER_ICONS[pi]}</span>
+                      <span style={{...gameFont,fontSize:9,color:isSel?PLAYER_COLORS[pi]:"rgba(255,255,255,0.4)"}}>{names[pi].slice(0,4)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <button onClick={()=>setNearpin(p=>({...p,[hole]:selected===null?undefined:null}))}
+                style={{width:"100%",marginTop:10,padding:"8px",borderRadius:8,cursor:"pointer",
+                  border:`1px solid ${selected===null?"rgba(248,113,113,0.6)":"rgba(255,255,255,0.1)"}`,
+                  background:selected===null?"rgba(248,113,113,0.1)":"rgba(255,255,255,0.03)",
+                  ...gameFont,fontSize:10,color:selected===null?"#f87171":"rgba(255,255,255,0.35)"}}>
+                該当なし（持ち越し）
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* 前後ホール */}
+        <div style={{display:"flex",gap:10,marginBottom:14}}>
+          <div style={{flex:1}}><Btn outline disabled={hole===0} onClick={()=>setHole(h=>Math.max(0,h-1))}>← PREV</Btn></div>
+          <div style={{flex:1}}><Btn gold onClick={()=>{if(hole<17)setHole(h=>h+1);else setPhase("result");}}>
+            {hole<17?"NEXT →":"RESULT 🏆"}
+          </Btn></div>
+        </div>
+
+        {/* 現在スコア */}
+        <div style={{...CARD,padding:14,marginBottom:24}}>
+          <div style={{...gameFont,fontSize:10,color:GOLD,letterSpacing:"0.15em",marginBottom:10}}>◆ 現在のスコア</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 48px 48px 56px",gap:4,marginBottom:6}}>
+            {["","FRONT","BACK","TOTAL"].map(h=>(
+              <div key={h} style={{...gameFont,fontSize:9,color:"rgba(255,255,255,0.3)",textAlign:h?"center":"left"}}>{h}</div>
+            ))}
+          </div>
+          {Array.from({length:4},(_,pi)=>(
+            <div key={pi} style={{display:"grid",gridTemplateColumns:"1fr 48px 48px 56px",gap:4,padding:"6px 0",
+              borderBottom:pi<3?"1px solid rgba(201,168,76,0.08)":"none",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:4,...gameFont,fontSize:11,color:PLAYER_COLORS[pi]}}>
+                <span style={{fontSize:14}}>{PLAYER_ICONS[pi]}</span>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{names[pi]}</span>
+              </div>
+              <div style={{...gameFont,fontSize:12,color:"rgba(255,255,255,0.6)",textAlign:"center"}}>{frontT[pi]||"-"}</div>
+              <div style={{...gameFont,fontSize:12,color:"rgba(255,255,255,0.6)",textAlign:"center"}}>{backT[pi]||"-"}</div>
+              <div style={{...gameFont,fontSize:13,color:ranks[pi]===1?GOLD:IVORY,textAlign:"center",fontWeight:"bold"}}>{totalT[pi]||"-"}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./sw.js");
+    }
+  </script>
+</body>
+</html>
