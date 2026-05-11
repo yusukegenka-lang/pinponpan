@@ -1,0 +1,12 @@
+{
+  "name": "pinponpan",
+  "version": "1.0.0",
+  "description": "ゴルフスコア集計アプリ",
+  "private": true,
+  "devDependencies": {
+    "htmlhint": "^1.1.4"
+  },
+  "scripts": {
+    "lint": "htmlhint index.html"
+  }
+}
