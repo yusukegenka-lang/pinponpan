@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0d1f14" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ピンポンパン" />
+  <title>ピンポンパン</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@900&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+    body { margin: 0; background: #0d1f14; overscroll-behavior: none; }
+    select option { background: #1a2e1a; color: white; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+
+const DEFAULT_PARS = [4,3,4,5,4,3,4,5,4,4,3,4,5,4,3,4,5,4];
+const PLAYER_COLORS = ["#4ade80","#60a5fa","#f87171","#fbbf24"];
+const PLAYER_ICONS  = ["🟢","🔵","🔴","🟡"];
+const medals = ["🥇","🥈","🥉","4位"];
+const GOLD = "#c9a84c";
+const IVORY= "#f5f0e8";
+const DARK = "#0d1f14";
+const BG   = {background:"linear-gradient(160deg,#0d1f14 0%,#1a3a2a 50%,#0d1f14 100%)"};
+const CARD = {background:"rgba(255,255,255,0.05)",border:"1px solid rgba(201,168,76,0.25)",borderRadius:16};
+const CARD_GOLD = {background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.5)",borderRadius:16};
+const GF = {fontFamily:"'M PLUS Rounded 1c', sans-serif", fontWeight:900};
+
+const SHEET_RAW_DEFAULT = [
+  {g:"ヌーヴェルゴルフ倶楽部",c:"OUT",p:[4,4,3,4,5,4,3,4,5]},
+  {g:"ヌーヴェルゴルフ倶楽部",c:"IN", p:[4,4,5,3,4,4,3,5,4]},
+  {g:"PGMゴルフリゾート沖縄",c:"デイゴ",p:[4,3,5,4,4,3,4,5,4]},
+  {g:"PGMゴルフリゾート沖縄",c:"ハイビスカス",p:[4,5,3,4,4,3,5,4,4]},
+  {g:"PGMゴルフリゾート沖縄",c:"ブーゲンビレア",p:[4,4,3,5,4,4,3,4,5]},
+  {g:"成田ヒルズカントリークラブ",c:"OUT",p:[4,4,3,5,4,4,3,5,4]},
+  {g:"成田ヒルズカントリークラブ",c:"IN", p:[4,5,4,3,4,4,3,4,5]},
+  {g:"総武カントリークラブ",c:"東",p:[4,4,3,4,5,4,3,4,5]},
+  {g:"総武カントリークラブ",c:"中",p:[4,5,4,3,4,4,3,5,4]},
+  {g:"総武カントリークラブ",c:"西",p:[4,4,3,5,4,4,3,4,5]},
+  {g:"阿見ゴルフクラブ",c:"OUT",p:[4,4,3,5,4,4,3,5,4]},
+  {g:"阿見ゴルフクラブ",c:"IN", p:[4,5,4,3,4,4,3,4,5]},
+  {g:"ザ・インペリアルCC",c:"東",p:[4,4,3,5,4,4,3,5,4]},
+  {g:"ザ・インペリアルCC",c:"中",p:[4,5,4,3,4,4,3,4,5]},
+  {g:"ザ・インペリアルCC",c:"西",p:[4,4,3,4,5,4,3,4,5]},
+  {g:"千代田カントリークラブ",c:"東",p:[4,4,3,5,4,4,3,5,4]},
+  {g:"千代田カントリークラブ",c:"中",p:[4,5,4,3,4,4,3,4,5]},
+  {g:"千代田カントリークラブ",c:"西",p:[4,4,3,4,5,4,3,4,5]},
+  {g:"霞ヶ浦カントリー倶楽部",c:"OUT",p:[4,4,3,5,4,4,3,5,4]},
+  {g:"霞ヶ浦カントリー倶楽部",c:"IN", p:[4,5,4,3,4,4,3,4,5]},
+  {g:"PGM総成カントリー倶楽部",c:"東",p:[4,4,3,4,5,4,3,4,5]},
+  {g:"PGM総成カントリー倶楽部",c:"西",p:[4,5,4,3,4,4,3,5,4]},
+  {g:"PGM総成カントリー倶楽部",c:"南",p:[4,4,3,5,4,4,3,4,5]},
+];
+
+function buildCourses(raw){
+  const groups={};
+  raw.forEach(r=>{if(!groups[r.g])groups[r.g]=[];groups[r.g].push(r);});
+  const out=[];
+  Object.entries(groups).forEach(([g,rows])=>{
+    if(rows.length===1){out.push({name:g,pars:[...rows[0].p,...rows[0].p]});}
+    else if(rows.length===2){out.push({name:`${g}（${rows[0].c}→${rows[1].c}）`,pars:[...rows[0].p,...rows[1].p]});}
+    else{for(let i=0;i<rows.length;i++)for(let j=0;j<rows.length;j++){if(i!==j)out.push({name:`${g}（${rows[i].c}→${rows[j].c}）`,pars:[...rows[i].p,...rows[j].p]});}}
+  });
+  return out;
+}
+
+function getTotal(s){return s.reduce((a,b)=>b!==""?a+Number(b):a,0);}
+function getRank(t){const s=[...t].sort((a,b)=>a-b);return t.map(v=>s.indexOf(v)+1);}
+function GoldLine(){return <div style={{height:1,background:`linear-gradient(90deg,transparent,${GOLD},transparent)`,margin:"12px 0"}}/>;}
+function Btn({onClick,children,gold,disabled,outline}){
+  const base={width:"100%",padding:"14px",borderRadius:12,...GF,fontSize:14,fontWeight:"bold",
+    cursor:disabled?"not-allowed":"pointer",transition:"all 0.15s",border:"none"};
+  const s=gold?{...base,background:disabled?"#555":`linear-gradient(135deg,${GOLD},#e8c56a)`,color:DARK,opacity:disabled?0.5:1}
+    :outline?{...base,background:"transparent",border:`1px solid rgba(201,168,76,0.4)`,color:IVORY}
+    :{...base,background:"rgba(255,255,255,0.08)",color:IVORY};
+  return <button style={s} onClick={onClick} disabled={disabled}>{children}</button>;
+}
+
+const LOGO_SRC = "data:image/webp;base64,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";
+
+function App(){
+  useEffect(()=>{
+    const fl=document.createElement("link");
+    fl.href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@900&display=swap";
+    fl.rel="stylesheet";
+    if(!document.querySelector('link[href*="M+PLUS"]'))document.head.appendChild(fl);
+  },[]);
+
+  const [phase,setPhase]=useState("course");
+  const [selectedCourse,setSelectedCourse]=useState(null);
+  const [cName,setCName]=useState("");
+  const [pars,setPars]=useState([...DEFAULT_PARS]);
+  const [names,setNames]=useState(["プレイヤー1","プレイヤー2","プレイヤー3","プレイヤー4"]);
+  const [scores,setScores]=useState(Array.from({length:4},()=>Array(18).fill("")));
+  const [hole,setHole]=useState(0);
+  const [pts,setPts]=useState({p1:3000,p2:1000,np:1500});
+  const [nearpin,setNearpin]=useState({});
+  const [showHelp,setShowHelp]=useState(false);
+  const [sheetSearch,setSheetSearch]=useState("");
+  const [customName,setCustomName]=useState("");
+  const [sheetRaw,setSheetRaw]=useState(SHEET_RAW_DEFAULT);
+  const [syncing,setSyncing]=useState(false);
+  const [syncMsg,setSyncMsg]=useState("");
+  const allCourses=buildCourses(sheetRaw);
+
+  async function syncSheet(){
+    setSyncing(true); setSyncMsg("");
+    try{
+      const res=await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          model:"claude-sonnet-4-20250514",
+          max_tokens:4000,
+          messages:[{role:"user",content:`以下のGoogleスプレッドシートの内容をJSONで返してください。説明不要、JSON配列のみ返してください。\n\nhttps://docs.google.com/spreadsheets/d/1aZGkQAt2uh_xRM3_iKGIgLSnlYlFg5P4V95hxl8RBdI/edit\n\n形式：[{"g":"ゴルフ場名","c":"コース名","p":[H1,H2,H3,H4,H5,H6,H7,H8,H9]},...]`}]
+        })
+      });
+      const data=await res.json();
+      const text=data.content?.map(b=>b.text||"").join("")||"";
+      const clean=text.replace(/```json|```/g,"").trim();
+      const parsed=JSON.parse(clean);
+      if(!Array.isArray(parsed)||parsed.length===0)throw new Error("データが空");
+      setSheetRaw(parsed);
+      setSyncMsg(`✓ ${parsed.length}行を取得しました`);
+    }catch(e){
+      setSyncMsg("✗ 同期に失敗しました");
+    }
+    setSyncing(false);
+  }
+
+  const p3=-pts.p2, p4=-pts.p1, npLose=Math.round(pts.np/3);
+  const par3Holes=pars.map((p,i)=>p===3?i:null).filter(i=>i!==null);
+  const frontT=scores.map(s=>getTotal(s.slice(0,9)));
+  const backT=scores.map(s=>getTotal(s.slice(9)));
+  const totalT=scores.map(s=>getTotal(s));
+  const ranks=getRank(totalT);
+  const parF=pars.slice(0,9).reduce((a,b)=>a+b,0);
+  const parB=pars.slice(9).reduce((a,b)=>a+b,0);
+  const parTotal=parF+parB;
+  const wrap={minHeight:"100vh",...BG,padding:"0 0 40px 0"};
+  const inner={maxWidth:480,margin:"0 auto",padding:"0 16px"};
+
+  function calcNearpin(){
+    const pr=[0,0,0,0]; let carry=0;
+    for(let i=0;i<par3Holes.length;i++){
+      const h=par3Holes[i], w=nearpin[h];
+      if(w===undefined)continue;
+      if(w===null){if(i<par3Holes.length-1)carry++;}
+      else{const m=carry+1;pr[w]+=pts.np*m;for(let pi=0;pi<4;pi++)if(pi!==w)pr[pi]-=npLose*m;carry=0;}
+    }
+    return pr;
+  }
+
+  function calcPrizes(totals){
+    const s=[...totals].sort((a,b)=>a-b);
+    if(s[0]===s[3])return[0,0,0,0];
+    const top3=s[0]===s[1]&&s[1]===s[2],top2=!top3&&s[0]===s[1],mid2=!top3&&!top2&&s[1]===s[2],bot2=!top3&&!top2&&!mid2&&s[2]===s[3];
+    const {p1,p2}=pts;
+    const t=top3?[p1,p1,p1,-(p1*3)]:top2?[(p1+p2)/2,(p1+p2)/2,p3,p4]:mid2?[p1,(p2+p3)/2,(p2+p3)/2,p4]:bot2?[p1,p2,(p3+p4)/2,(p3+p4)/2]:[p1,p2,p3,p4];
+    return totals.map(v=>t[s.indexOf(v)]);
+  }
+
+  function sc(pi,h,v){const val=v===""?"":(Math.max(1,parseInt(v)||1));setScores(prev=>{const n=prev.map(s=>[...s]);n[pi][h]=val;return n;});}
+  function sp(h,v){setPars(prev=>{const n=[...prev];n[h]=Math.max(3,Math.min(5,parseInt(v)||4));return n;});}
+  function pStr(v){return v>0?`+${v.toLocaleString()}pt`:`${v.toLocaleString()}pt`;}
+  function pCol(v){return v>0?GOLD:v<0?"#f87171":"rgba(255,255,255,0.4)";}
+  function selectCourse(course){setSelectedCourse(course);setCName(course.name);setPars([...course.pars]);}
+
+  function Logo({sm}){
+    return (
+      <div style={{textAlign:"center",marginBottom:sm?16:28}}>
+        <img src={LOGO_SRC} alt="PIN PON PAN" style={{width:sm?"65%":"85%",maxWidth:sm?240:340,height:"auto",display:"block",margin:"0 auto"}}/>
+        {!sm&&<div style={{...GF,fontSize:9,color:"rgba(245,240,232,0.35)",letterSpacing:"0.2em",marginTop:6}}>GOLF SCORE TRACKER</div>}
+      </div>
+    );
+  }
+
+  // ── HELP ──
+  if(showHelp) return (
+    <div style={wrap}>
+      <div style={inner}>
+        <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(13,31,20,0.97)",backdropFilter:"blur(12px)",
+          borderBottom:`1px solid rgba(201,168,76,0.2)`,padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{...GF,fontSize:16,color:GOLD}}>ヘルプ / ルール</span>
+          <button onClick={()=>setShowHelp(false)} style={{...GF,fontSize:13,background:"rgba(255,255,255,0.08)",color:IVORY,
+            border:`1px solid rgba(201,168,76,0.25)`,borderRadius:8,padding:"6px 14px",cursor:"pointer"}}>✕ 閉じる</button>
+        </div>
+        <div style={{padding:"20px 0 40px"}}>
+          <div style={{...CARD,padding:18,marginBottom:14}}>
+            <div style={{...GF,fontSize:13,color:GOLD,marginBottom:14}}>◆ 基本操作</div>
+            {[{icon:"⛳",t:"コース設定",d:"コース名と各ホールのParを設定します。"},
+              {icon:"🟢",t:"プレイヤー登録",d:"4人分の名前とポイントを設定します。"},
+              {icon:"➕",t:"スコア入力",d:"＋／－でスコアを入力。最初からParが入力済みです。"},
+              {icon:"🏠",t:"ホール移動",d:"上部のナビをタップで任意のホールへ移動できます。"},
+            ].map(({icon,t,d})=>(
+              <div key={t} style={{display:"flex",gap:12,marginBottom:12,paddingBottom:12,borderBottom:"1px solid rgba(201,168,76,0.08)"}}>
+                <span style={{fontSize:22,width:30,flexShrink:0}}>{icon}</span>
+                <div><div style={{...GF,fontSize:13,color:IVORY,marginBottom:3}}>{t}</div>
+                <div style={{...GF,fontSize:11,color:"rgba(245,240,232,0.5)",lineHeight:1.7}}>{d}</div></div>
+              </div>
+            ))}
+          </div>
+          <div style={{...CARD,padding:18,marginBottom:14}}>
+            <div style={{...GF,fontSize:13,color:GOLD,marginBottom:12}}>◆ スコアポイントルール</div>
+            <div style={{...GF,fontSize:11,color:"rgba(245,240,232,0.5)",marginBottom:10,lineHeight:1.7}}>前半・後半・トータルの3回、合計スコアで順位を競います。</div>
+            {[{r:"1位",pt:`+${pts.p1.toLocaleString()}pt`,c:GOLD},{r:"2位",pt:`+${pts.p2.toLocaleString()}pt`,c:IVORY},
+              {r:"3位",pt:`${p3.toLocaleString()}pt`,c:"#f87171"},{r:"4位",pt:`${p4.toLocaleString()}pt`,c:"#f87171"}
+            ].map(({r,pt,c})=>(
+              <div key={r} style={{display:"flex",justifyContent:"space-between",padding:"7px 10px",borderRadius:8,marginBottom:5,background:"rgba(255,255,255,0.04)"}}>
+                <span style={{...GF,fontSize:12,color:"rgba(245,240,232,0.6)"}}>{r}</span>
+                <span style={{...GF,fontSize:12,color:c,fontWeight:"bold"}}>{pt}</span>
+              </div>
+            ))}
+            <div style={{...GF,fontSize:10,color:"rgba(245,240,232,0.35)",marginTop:8}}>※ 4人全員同スコアはポイントなし</div>
+          </div>
+          <div style={{...CARD,padding:18,marginBottom:14}}>
+            <div style={{...GF,fontSize:13,color:GOLD,marginBottom:12}}>◆ ニアピン賞ルール</div>
+            <div style={{...GF,fontSize:11,color:"rgba(245,240,232,0.5)",lineHeight:1.7,marginBottom:10}}>Par3のホールで1人がニアピン賞を獲得します。</div>
+            {[{l:"WIN（獲得）",v:`+${pts.np.toLocaleString()}pt`,c:GOLD},{l:"LOSE（負担）",v:`-${npLose.toLocaleString()}pt × 3人`,c:"#f87171"}
+            ].map(({l,v,c})=>(
+              <div key={l} style={{display:"flex",justifyContent:"space-between",padding:"7px 10px",borderRadius:8,marginBottom:5,background:"rgba(255,255,255,0.04)"}}>
+                <span style={{...GF,fontSize:12,color:"rgba(245,240,232,0.6)"}}>{l}</span>
+                <span style={{...GF,fontSize:12,color:c,fontWeight:"bold"}}>{v}</span>
+              </div>
+            ))}
+            <GoldLine/>
+            <div style={{...GF,fontSize:11,color:"rgba(245,240,232,0.4)",lineHeight:1.8}}>
+              該当なしの場合は次のPar3に持ち越し（×2〜×4倍）。4ホール全て該当なしはポイントなし。
+            </div>
+          </div>
+          <div style={{...CARD,padding:18}}>
+            <div style={{...GF,fontSize:13,color:GOLD,marginBottom:12}}>◆ スコア表示</div>
+            {[{l:"EAGLE↓",bg:"rgba(201,168,76,0.25)",c:GOLD,d:"Par-2以下"},
+              {l:"BIRDIE",bg:"rgba(239,68,68,0.25)",c:"#f87171",d:"Par-1"},
+              {l:"PAR",bg:"rgba(255,255,255,0.1)",c:IVORY,d:"Par通り"},
+              {l:"BOGEY",bg:"rgba(96,165,250,0.2)",c:"#93c5fd",d:"Par+1"},
+              {l:"DBL",bg:"rgba(59,130,246,0.2)",c:"#60a5fa",d:"Par+2"},
+            ].map(({l,bg,c,d})=>(
+              <div key={l} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                <span style={{...GF,fontSize:10,padding:"3px 10px",borderRadius:20,background:bg,color:c,border:`1px solid ${c}40`,minWidth:68,textAlign:"center"}}>{l}</span>
+                <span style={{...GF,fontSize:11,color:"rgba(245,240,232,0.5)"}}>{d}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── COURSE ──
+  if(phase==="course") return (
+    <div style={wrap}>
+      <div style={inner}>
+        <div style={{paddingTop:36}}><Logo/></div>
+
+        <div style={{...CARD,padding:18,marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{...GF,fontSize:13,color:GOLD}}>📊 コース一覧から選択</div>
+            <button onClick={syncSheet} disabled={syncing}
+              style={{...GF,fontSize:10,padding:"6px 12px",borderRadius:8,cursor:syncing?"not-allowed":"pointer",border:"none",
+                background:syncing?"rgba(255,255,255,0.1)":`linear-gradient(135deg,${GOLD},#e8c56a)`,
+                color:syncing?"rgba(255,255,255,0.4)":DARK,fontWeight:"bold"}}>
+              {syncing?"同期中...":"🔄 最新に更新"}
+            </button>
+          </div>
+          {syncMsg&&<div style={{...GF,fontSize:10,color:syncMsg.startsWith("✓")?"#4ade80":"#f87171",marginBottom:8}}>{syncMsg}</div>}
+          <input value={sheetSearch} onChange={e=>setSheetSearch(e.target.value)} placeholder="ゴルフ場名で絞り込み..."
+            style={{width:"100%",background:"rgba(255,255,255,0.06)",border:`1px solid rgba(201,168,76,0.3)`,borderRadius:8,
+              padding:"10px 14px",color:IVORY,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:10,...GF}}/>
+          <div style={{maxHeight:260,overflowY:"auto"}}>
+            {allCourses.filter(c=>!sheetSearch||c.name.includes(sheetSearch)).map((course,i)=>{
+              const isSel=selectedCourse?.name===course.name;
+              return (
+                <button key={i} onClick={()=>selectCourse(course)}
+                  style={{width:"100%",textAlign:"left",padding:"10px 12px",borderRadius:8,marginBottom:5,cursor:"pointer",
+                    background:isSel?"rgba(201,168,76,0.15)":"rgba(255,255,255,0.04)",
+                    border:`1px solid ${isSel?"rgba(201,168,76,0.6)":"rgba(201,168,76,0.12)"}`,display:"block"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{...GF,fontSize:12,color:isSel?GOLD:IVORY}}>{course.name}</span>
+                    <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                      <span style={{...GF,fontSize:10,color:"rgba(255,255,255,0.35)"}}>Par {course.pars.reduce((a,b)=>a+b,0)}</span>
+                      {isSel&&<span style={{color:GOLD}}>✓</span>}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{...GF,fontSize:10,color:"rgba(255,255,255,0.25)",marginTop:8}}>{allCourses.length}コース収録</div>
+        </div>
+
+        <div style={{...CARD,padding:18,marginBottom:16}}>
+          <div style={{...GF,fontSize:13,color:GOLD,marginBottom:10}}>✏️ カスタム設定</div>
+          <input value={customName} onChange={e=>setCustomName(e.target.value)} placeholder="コース名を入力"
+            style={{width:"100%",background:"rgba(255,255,255,0.06)",border:`1px solid rgba(201,168,76,0.25)`,borderRadius:8,
+              padding:"10px 14px",color:IVORY,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:12,...GF}}/>
+          {[{label:"前半（H1〜9）",range:[0,9]},{label:"後半（H10〜18）",range:[9,18]}].map(({label,range})=>(
+            <div key={label} style={{marginBottom:10}}>
+              <div style={{...GF,fontSize:10,color:"rgba(255,255,255,0.4)",marginBottom:6}}>{label}</div>
+              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                {pars.slice(range[0],range[1]).map((p,i)=>{
+                  const hi=range[0]+i;
+                  const col=p===3?GOLD:p===5?"#60a5fa":IVORY;
+                  return (
+                    <div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                      <span style={{fontSize:9,color:"rgba(255,255,255,0.3)",...GF}}>{hi+1}</span>
+                      <select value={p} onChange={e=>sp(hi,e.target.value)}
+                        style={{width:36,height:34,background:"rgba(255,255,255,0.06)",border:`1px solid rgba(201,168,76,0.25)`,
+                          borderRadius:6,color:col,fontSize:13,textAlign:"center",...GF,outline:"none"}}>
+                        <option value={3}>3</option><option value={4}>4</option><option value={5}>5</option>
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <div style={{textAlign:"right",...GF,fontSize:10,color:"rgba(201,168,76,0.5)"}}>FRONT {parF} | BACK {parB} | TOTAL {parTotal}</div>
+          <div style={{marginTop:10}}>
+            <Btn onClick={()=>{const n=customName||"カスタムコース";setSelectedCourse({name:n,pars:[...pars]});setCName(n);}}>
+              このPar設定を使う
+            </Btn>
+          </div>
+        </div>
+
+        <Btn gold disabled={!selectedCourse} onClick={()=>setPhase("setup")}>
+          {selectedCourse?`次へ → ${selectedCourse.name}`:"コースを選択してください"}
+        </Btn>
+      </div>
+    </div>
+  );
+
+  // ── SETUP ──
+  if(phase==="setup") return (
+    <div style={wrap}>
+      <div style={inner}>
+        <div style={{paddingTop:32}}>
+          <button onClick={()=>setPhase("course")} style={{...GF,fontSize:11,color:"rgba(201,168,76,0.5)",background:"none",border:"none",cursor:"pointer",marginBottom:12}}>← コース選択に戻る</button>
+          <Logo sm/>
+          <div style={{textAlign:"center",marginBottom:24}}>
+            <div style={{...GF,fontSize:11,color:"rgba(245,240,232,0.4)"}}>{cName} | PAR {parTotal}</div>
+          </div>
+        </div>
+
+        <div style={{...CARD,padding:20,marginBottom:16}}>
+          <div style={{...GF,fontSize:13,color:GOLD,marginBottom:14}}>◆ プレイヤー登録</div>
+          {names.map((name,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+              <span style={{fontSize:20,width:26}}>{PLAYER_ICONS[i]}</span>
+              <input value={name} onChange={e=>setNames(p=>{const n=[...p];n[i]=e.target.value;return n;})} placeholder={`PLAYER ${i+1}`}
+                style={{flex:1,background:"rgba(255,255,255,0.06)",border:`1px solid rgba(201,168,76,0.25)`,borderRadius:8,
+                  padding:"10px 14px",color:PLAYER_COLORS[i],fontSize:13,outline:"none",...GF,boxSizing:"border-box"}}/>
+            </div>
+          ))}
+        </div>
+
+        <div style={{...CARD,padding:20,marginBottom:16}}>
+          <div style={{...GF,fontSize:13,color:GOLD,marginBottom:14}}>◆ ポイント設定</div>
+          {[{key:"p1",label:"1位"},{key:"p2",label:"2位"},{key:"np",label:"ニアピン WIN"}].map(({key,label})=>(
+            <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <span style={{...GF,fontSize:12,color:"rgba(245,240,232,0.6)"}}>{label}</span>
+              <input type="number" value={pts[key]} onChange={e=>setPts(p=>({...p,[key]:parseInt(e.target.value)||0}))}
+                style={{width:100,background:"rgba(255,255,255,0.06)",border:`1px solid rgba(201,168,76,0.25)`,borderRadius:8,
+                  padding:"8px 10px",color:pts[key]>=0?GOLD:"#f87171",fontSize:13,outline:"none",textAlign:"right",...GF,boxSizing:"border-box"}}/>
+            </div>
+          ))}
+          {[{label:"3位（自動）",val:p3},{label:"4位（自動）",val:p4},{label:"ニアピン LOSE（自動）",val:-npLose}].map(({label,val})=>(
+            <div key={label} style={{display:"flex",justifyContent:"space-between",padding:"6px 10px",borderRadius:8,marginBottom:5,
+              background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)"}}>
+              <span style={{...GF,fontSize:11,color:"rgba(245,240,232,0.3)"}}>{label}</span>
+              <span style={{...GF,fontSize:11,color:"#f87171"}}>{val.toLocaleString()}pt</span>
+            </div>
+          ))}
+        </div>
+
+        <Btn gold onClick={()=>{setScores(Array.from({length:4},()=>pars.map(p=>p)));setNearpin({});setHole(0);setPhase("playing");}}>
+          ▶ ラウンド スタート
+        </Btn>
+      </div>
+    </div>
+  );
+
+  // ── RESULT ──
+  if(phase==="result"){
+    const fP=calcPrizes(frontT),bP=calcPrizes(backT),tP=calcPrizes(totalT),nP=calcNearpin();
+    const grand=Array.from({length:4},(_,i)=>fP[i]+bP[i]+tP[i]+nP[i]);
+    const byGrand=[...Array(4).keys()].sort((a,b)=>grand[b]-grand[a]);
+    const sections=[{label:"FRONT 9",sc:frontT,pr:fP},{label:"BACK 9",sc:backT,pr:bP},{label:"TOTAL",sc:totalT,pr:tP}];
+    const nearpinRows=par3Holes.map((h,idx)=>{
+      let carry=0;
+      for(let j=idx-1;j>=0;j--){if(nearpin[par3Holes[j]]===null)carry++;else break;}
+      return{holeNum:h+1,winner:nearpin[h],mult:carry+1};
+    });
+    return (
+      <div style={wrap}>
+        <div style={inner}>
+          <div style={{paddingTop:32}}><Logo sm/></div>
+          <div style={{textAlign:"center",marginBottom:20}}>
+            <div style={{fontSize:40}}>🏆</div>
+            <div style={{...GF,fontSize:18,color:GOLD}}>FINAL RESULT</div>
+            <div style={{...GF,fontSize:10,color:"rgba(245,240,232,0.4)"}}>{cName} | PAR {parTotal}</div>
+            <GoldLine/>
+          </div>
+          {sections.map(({label,sc,pr})=>{
+            const si=[...Array(4).keys()].sort((a,b)=>sc[a]-sc[b]);
+            return (
+              <div key={label} style={{...CARD,padding:16,marginBottom:12}}>
+                <div style={{...GF,fontSize:12,color:GOLD,marginBottom:10}}>◆ {label}</div>
+                {si.map((pi,rank)=>(
+                  <div key={pi} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:rank<3?"1px solid rgba(201,168,76,0.08)":"none"}}>
+                    <span style={{fontSize:16,width:26,textAlign:"center"}}>{medals[rank]}</span>
+                    <span style={{fontSize:16}}>{PLAYER_ICONS[pi]}</span>
+                    <span style={{flex:1,...GF,fontSize:12,color:PLAYER_COLORS[pi]}}>{names[pi]}</span>
+                    <span style={{...GF,fontSize:12,color:"rgba(255,255,255,0.4)",width:28,textAlign:"right"}}>{sc[pi]||"-"}</span>
+                    <span style={{...GF,fontSize:12,color:pCol(pr[pi]),width:100,textAlign:"right",fontWeight:"bold"}}>{pStr(pr[pi])}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+          <div style={{...CARD,padding:16,marginBottom:12}}>
+            <div style={{...GF,fontSize:12,color:GOLD,marginBottom:10}}>◆ NEARPIN</div>
+            {nearpinRows.map(({holeNum,winner,mult})=>(
+              <div key={holeNum} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:"1px solid rgba(201,168,76,0.08)"}}>
+                <span style={{...GF,fontSize:10,color:"rgba(255,255,255,0.4)",width:52}}>HOLE {holeNum}</span>
+                {mult>1&&<span style={{...GF,fontSize:9,color:"#f87171",background:"rgba(248,113,113,0.1)",border:"1px solid rgba(248,113,113,0.3)",borderRadius:4,padding:"2px 5px"}}>×{mult}</span>}
+                {winner===undefined?<span style={{...GF,fontSize:10,color:"rgba(255,255,255,0.2)"}}>未入力</span>
+                  :winner===null?<span style={{...GF,fontSize:10,color:"rgba(255,255,255,0.35)"}}>該当なし→持ち越し</span>
+                  :<><span style={{fontSize:16}}>{PLAYER_ICONS[winner]}</span>
+                    <span style={{...GF,fontSize:11,color:PLAYER_COLORS[winner]}}>{names[winner]}</span>
+                    <span style={{...GF,fontSize:11,color:GOLD,marginLeft:"auto"}}>+{(pts.np*mult).toLocaleString()}pt</span></>}
+              </div>
+            ))}
+            <div style={{marginTop:10}}>
+              {Array.from({length:4},(_,pi)=>nP[pi]!==0&&(
+                <div key={pi} style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}>
+                  <span style={{...GF,fontSize:11,color:PLAYER_COLORS[pi]}}>{PLAYER_ICONS[pi]} {names[pi]}</span>
+                  <span style={{...GF,fontSize:11,color:pCol(nP[pi]),fontWeight:"bold"}}>{pStr(nP[pi])}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{...CARD_GOLD,padding:20,marginBottom:20}}>
+            <div style={{...GF,fontSize:12,color:GOLD,marginBottom:14}}>◆ POINT TOTAL</div>
+            {byGrand.map((pi,rank)=>(
+              <div key={pi} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,marginBottom:6,
+                background:rank===0?"rgba(201,168,76,0.15)":"rgba(255,255,255,0.03)"}}>
+                <span style={{fontSize:rank===0?24:18,width:30}}>{["🥇","🥈","🥉","4位"][rank]}</span>
+                <span style={{fontSize:18}}>{PLAYER_ICONS[pi]}</span>
+                <span style={{flex:1,...GF,fontSize:13,color:PLAYER_COLORS[pi]}}>{names[pi]}</span>
+                <div style={{textAlign:"right"}}>
+                  <div style={{...GF,fontSize:16,color:pCol(grand[pi]),fontWeight:"bold"}}>{pStr(grand[pi])}</div>
+                  <div style={{...GF,fontSize:9,color:"rgba(255,255,255,0.3)"}}>{pStr(fP[pi])}/{pStr(bP[pi])}/{pStr(tP[pi])}/NP:{pStr(nP[pi])}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <div style={{flex:1}}><Btn outline onClick={()=>setPhase("playing")}>← スコア入力</Btn></div>
+            <div style={{flex:1}}><Btn gold onClick={()=>{setScores(Array.from({length:4},()=>pars.map(p=>p)));setNearpin({});setSelectedCourse(null);setPhase("course");setHole(0);}}>もう一度</Btn></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── PLAYING ──
+  const par=pars[hole], isHalf=hole<9?"FRONT":"BACK";
+  return (
+    <div style={{...wrap,paddingBottom:0}}>
+      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(13,31,20,0.95)",backdropFilter:"blur(12px)",
+        borderBottom:`1px solid rgba(201,168,76,0.2)`,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <div style={{...GF,fontSize:9,color:"rgba(201,168,76,0.6)",marginBottom:3}}>{isHalf} · {cName}</div>
+          <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+            <span style={{...GF,fontSize:20,color:IVORY}}>HOLE {hole+1}</span>
+            <span style={{...GF,fontSize:11,color:"rgba(201,168,76,0.7)"}}>PAR {par}</span>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setShowHelp(true)} style={{...GF,fontSize:13,background:"rgba(255,255,255,0.08)",color:"rgba(201,168,76,0.7)",
+            border:`1px solid rgba(201,168,76,0.25)`,borderRadius:8,padding:"8px 12px",cursor:"pointer"}}>？</button>
+          <button onClick={()=>setPhase("course")} style={{...GF,fontSize:11,background:"rgba(255,255,255,0.08)",color:"rgba(201,168,76,0.7)",
+            border:`1px solid rgba(201,168,76,0.25)`,borderRadius:8,padding:"8px 12px",cursor:"pointer"}}>← 設定</button>
+          <button onClick={()=>setPhase("result")} style={{...GF,fontSize:11,background:`linear-gradient(135deg,${GOLD},#e8c56a)`,
+            color:DARK,border:"none",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:"bold"}}>結果 →</button>
+        </div>
+      </div>
+
+      <div style={{...inner,paddingTop:16}}>
+        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:16}}>
+          {Array.from({length:18},(_,i)=>{
+            const isCur=i===hole,edited=scores.some(s=>s[i]!==pars[i])||(pars[i]===3&&nearpin[i]!==undefined);
+            return <button key={i} onClick={()=>setHole(i)}
+              style={{width:32,height:32,borderRadius:6,fontSize:11,fontWeight:"bold",cursor:"pointer",...GF,border:"none",
+                marginLeft:i===9?8:0,transition:"all 0.15s",
+                background:isCur?`linear-gradient(135deg,${GOLD},#e8c56a)`:edited?"rgba(201,168,76,0.2)":"rgba(255,255,255,0.06)",
+                color:isCur?DARK:edited?GOLD:"rgba(255,255,255,0.35)",transform:isCur?"scale(1.15)":"scale(1)"}}>
+              {i+1}</button>;
+          })}
+        </div>
+
+        <div style={{...CARD,padding:16,marginBottom:14}}>
+          <div style={{...GF,fontSize:10,color:GOLD,letterSpacing:"0.15em",marginBottom:14}}>◆ スコア入力</div>
+          {Array.from({length:4},(_,pi)=>{
+            const val=scores[pi][hole],diff=val!==""?Number(val)-par:null;
+            const bi=diff===null?null:diff<=-2?{l:"EAGLE↓",bg:"rgba(201,168,76,0.25)",c:GOLD}:diff===-1?{l:"BIRDIE",bg:"rgba(239,68,68,0.25)",c:"#f87171"}:diff===0?{l:"PAR",bg:"rgba(255,255,255,0.1)",c:IVORY}:diff===1?{l:"BOGEY",bg:"rgba(96,165,250,0.2)",c:"#93c5fd"}:diff===2?{l:"DBL",bg:"rgba(59,130,246,0.2)",c:"#60a5fa"}:{l:`+${diff}`,bg:"rgba(30,58,138,0.3)",c:"#818cf8"};
+            return (
+              <div key={pi} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:pi<3?"1px solid rgba(201,168,76,0.08)":"none"}}>
+                <span style={{fontSize:18,width:26}}>{PLAYER_ICONS[pi]}</span>
+                <span style={{flex:1,...GF,fontSize:12,color:PLAYER_COLORS[pi]}}>{names[pi]}</span>
+                {bi&&<span style={{...GF,fontSize:9,padding:"3px 7px",borderRadius:20,background:bi.bg,color:bi.c,border:`1px solid ${bi.c}40`}}>{bi.l}</span>}
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <button onClick={()=>sc(pi,hole,val===""?par-1:Math.max(1,Number(val)-1))}
+                    style={{width:32,height:32,borderRadius:"50%",background:"rgba(255,255,255,0.08)",border:`1px solid rgba(201,168,76,0.2)`,
+                      color:IVORY,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                  <span style={{width:28,textAlign:"center",...GF,fontSize:18,color:val===""?"rgba(255,255,255,0.2)":IVORY,fontWeight:"bold"}}>{val||"-"}</span>
+                  <button onClick={()=>sc(pi,hole,val===""?par+1:Number(val)+1)}
+                    style={{width:32,height:32,borderRadius:"50%",background:"rgba(255,255,255,0.08)",border:`1px solid rgba(201,168,76,0.2)`,
+                      color:IVORY,fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {par===3&&(()=>{
+          const sel=nearpin[hole],hIdx=par3Holes.indexOf(hole);
+          let carry=0;for(let j=hIdx-1;j>=0;j--){if(nearpin[par3Holes[j]]===null)carry++;else break;}
+          const mult=carry+1;
+          return (
+            <div style={{...CARD_GOLD,padding:16,marginBottom:14}}>
+              <div style={{...GF,fontSize:10,color:GOLD,marginBottom:4}}>◆ NEARPIN {mult>1?`× ${mult} (持ち越し${carry}回)`:""}</div>
+              <div style={{...GF,fontSize:9,color:"rgba(255,255,255,0.35)",marginBottom:12}}>WIN: +{(pts.np*mult).toLocaleString()}pt / LOSE: -{(npLose*mult).toLocaleString()}pt</div>
+              <div style={{display:"flex",gap:6}}>
+                {Array.from({length:4},(_,pi)=>{
+                  const isSel=sel===pi;
+                  return <button key={pi} onClick={()=>setNearpin(p=>({...p,[hole]:isSel?undefined:pi}))}
+                    style={{flex:1,padding:"10px 4px",borderRadius:10,cursor:"pointer",border:`2px solid ${isSel?PLAYER_COLORS[pi]:"rgba(255,255,255,0.1)"}`,
+                      background:isSel?`${PLAYER_COLORS[pi]}22`:"rgba(255,255,255,0.04)",
+                      display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:20}}>{PLAYER_ICONS[pi]}</span>
+                    <span style={{...GF,fontSize:9,color:isSel?PLAYER_COLORS[pi]:"rgba(255,255,255,0.4)"}}>{names[pi].slice(0,4)}</span>
+                  </button>;
+                })}
+              </div>
+              <button onClick={()=>setNearpin(p=>({...p,[hole]:sel===null?undefined:null}))}
+                style={{width:"100%",marginTop:10,padding:"8px",borderRadius:8,cursor:"pointer",
+                  border:`1px solid ${sel===null?"rgba(248,113,113,0.6)":"rgba(255,255,255,0.1)"}`,
+                  background:sel===null?"rgba(248,113,113,0.1)":"rgba(255,255,255,0.03)",
+                  ...GF,fontSize:10,color:sel===null?"#f87171":"rgba(255,255,255,0.35)"}}>
+                該当なし（持ち越し）
+              </button>
+            </div>
+          );
+        })()}
+
+        <div style={{display:"flex",gap:10,marginBottom:14}}>
+          <div style={{flex:1}}><Btn outline disabled={hole===0} onClick={()=>setHole(h=>Math.max(0,h-1))}>← PREV</Btn></div>
+          <div style={{flex:1}}><Btn gold onClick={()=>{if(hole<17)setHole(h=>h+1);else setPhase("result");}}>
+            {hole<17?"NEXT →":"RESULT 🏆"}
+          </Btn></div>
+        </div>
+
+        <div style={{...CARD,padding:14,marginBottom:24}}>
+          <div style={{...GF,fontSize:10,color:GOLD,marginBottom:10}}>◆ 現在のスコア</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 48px 48px 56px",gap:4,marginBottom:6}}>
+            {["","FRONT","BACK","TOTAL"].map(h=><div key={h} style={{...GF,fontSize:9,color:"rgba(255,255,255,0.3)",textAlign:h?"center":"left"}}>{h}</div>)}
+          </div>
+          {Array.from({length:4},(_,pi)=>(
+            <div key={pi} style={{display:"grid",gridTemplateColumns:"1fr 48px 48px 56px",gap:4,padding:"6px 0",
+              borderBottom:pi<3?"1px solid rgba(201,168,76,0.08)":"none",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:4,...GF,fontSize:11,color:PLAYER_COLORS[pi]}}>
+                <span style={{fontSize:14}}>{PLAYER_ICONS[pi]}</span>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{names[pi]}</span>
+              </div>
+              <div style={{...GF,fontSize:12,color:"rgba(255,255,255,0.6)",textAlign:"center"}}>{frontT[pi]||"-"}</div>
+              <div style={{...GF,fontSize:12,color:"rgba(255,255,255,0.6)",textAlign:"center"}}>{backT[pi]||"-"}</div>
+              <div style={{...GF,fontSize:13,color:ranks[pi]===1?GOLD:IVORY,textAlign:"center",fontWeight:"bold"}}>{totalT[pi]||"-"}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./sw.js");
+    }
+  </script>
+</body>
+</html>
